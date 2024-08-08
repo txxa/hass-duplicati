@@ -1,0 +1,72 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Dieses Backup ist bereits konfiguriert"
+        },
+        "error": {
+            "cannot_connect": "Verbindung fehlgeschlagen",
+            "invalid_auth": "Authentifizierung fehlgeschlagen",
+            "invalid_id": "Backup-ID ungültig",
+            "unknown": "Unerwarteter Fehler"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "id": "Backup-ID",
+                    "password": "Passwort",
+                    "url": "Backup-Server URL",
+                    "username": "Benutzername",
+                    "verify_ssl": "SSL-Zertifikat überprüfen"
+                }
+            }
+        }
+    },
+    "entity": {
+        "button": {
+            "create_backup": {
+                "name": "Backup erstellen"
+            },
+            "refresh_sensor_data": {
+                "name": "Sensor-Daten aktualisieren"
+            }
+        },
+        "sensor": {
+            "last_backup_execution": {
+                "name": "Datum"
+            },
+            "last_backup_duration": {
+                "name": "Dauer"
+            },
+            "last_backup_error_message": {
+                "name": "Fehlermeldung"
+            },
+            "last_backup_source_size": {
+                "name": "Quellgrösse"
+            },
+            "last_backup_source_files_count": {
+                "name": "Quelldateien"
+            },
+            "last_backup_target_size": {
+                "name": "Zielgrösse"
+            },
+            "last_backup_target_files_count": {
+                "name": "Zieldateien"
+            },
+            "last_backup_status": {
+                "name": "Status"
+            }
+        }
+    },
+    "options": {
+        "error": {
+            "unknown": "Unerwarteter Fehler"
+        },
+        "step": {
+            "init": {
+                "data": {
+                    "scan_interval": "Scan-Intervall [s]"
+                }
+            }
+        }
+    }
+}

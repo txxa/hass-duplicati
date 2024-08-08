@@ -1,0 +1,29 @@
+create_backup:
+  name: "Create backup"
+  description: "Manually create a backup."
+  fields:
+    host:
+      name: "Host"
+      description: "Duplicati backup host (incl. port)."
+      example: "duplicati.local:8200"
+      required: true
+    backup_id:
+      name: "Backup ID"
+      description: Backup ID to create a backup for.
+      example: 123
+      required: true
+
+refresh_sensor_data:
+  name: "Refresh sensor data"
+  description: "Manually refresh sensor data."
+  fields:
+    host:
+      name: "Host"
+      description: "Duplicati backup host (incl. port)."
+      example: "duplicati.local:8200"
+      required: true
+    backup_id:
+      name: "Backup ID"
+      description: "Backup ID to refresh sensor data for."
+      example: 123
+      required: true

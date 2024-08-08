@@ -1,0 +1,18 @@
+{
+  "domain": "duplicati",
+  "name": "Duplicati",
+  "codeowners": [
+    "@txxa"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/txxa/hass-duplicati",
+  "homekit": {},
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/txxa/hass-duplicati/issues",
+  "requirements": [],
+  "ssdp": [],
+  "version": "0.1.0",
+  "zeroconf": []
+}
