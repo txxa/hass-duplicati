@@ -1,17 +1,20 @@
 """Definition for Duplicati backup software sensors."""
 
+from typing import Any
+
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.components.sensor.const import SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfInformation, UnitOfTime
+from homeassistant.const import CONF_URL, UnitOfInformation, UnitOfTime
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
     DOMAIN,
+    MANUFACTURER,
     METRIC_DURATION,
     METRIC_ERROR_MESSAGE,
     METRIC_EXECUTION,
@@ -20,6 +23,7 @@ from .const import (
     METRIC_STATUS,
     METRIC_TARGET_FILES,
     METRIC_TARGET_SIZE,
+    MODEL,
     STATUS_ERROR,
     STATUS_OK,
 )
@@ -103,15 +107,41 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up Duplicati sensors based on a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    device_info = hass.data[DOMAIN][entry.entry_id]["device_info"]
-    # Create sensors
-    sensors = [
-        DuplicatiSensor(coordinator, description, device_info)
-        for _, description in SENSORS.items()
-    ]
-    # Add sensors to hass
-    async_add_entities(sensors)
+    backups: dict[str, str] = hass.data[DOMAIN][entry.entry_id]["backups"]
+    coordinators = hass.data[DOMAIN][entry.entry_id]["coordinators"]
+    for backup_id, backup_name in backups.items():
+        coordinator = coordinators[backup_id]
+        backup = {"id": backup_id, "name": backup_name}
+        sensors = create_backup_sensors(hass, entry, backup, coordinator)
+        # Add sensors to hass
+        async_add_entities(sensors)
+
+
+def create_backup_sensors(
+    hass: HomeAssistant, entry: ConfigEntry, backup, coordinator
+) -> list[Any]:
+    """Create sensor entities for the given resource."""
+    sensors = []
+    host = hass.data[DOMAIN][entry.entry_id]["host"]
+    version_info = hass.data[DOMAIN][entry.entry_id]["version_info"]
+    url = entry.data[CONF_URL]
+    unique_id = f"{host}/{backup["id"]}"
+
+    device_info = DeviceInfo(
+        name=backup["name"],
+        model=MODEL,
+        manufacturer=MANUFACTURER,
+        configuration_url=url,
+        sw_version=version_info.get("server_version"),
+        serial_number=unique_id,
+        identifiers={(DOMAIN, unique_id)},
+        entry_type=DeviceEntryType.SERVICE,
+    )
+
+    for description in SENSORS.values():
+        sensor = DuplicatiSensor(coordinator, description, device_info)
+        sensors.append(sensor)
+    return sensors
 
 
 class DuplicatiSensor(CoordinatorEntity, SensorEntity):
