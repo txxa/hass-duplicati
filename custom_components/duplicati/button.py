@@ -9,12 +9,12 @@ from typing import Any, Final
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import CONF_URL, EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, MANUFACTURER, MODEL
 from .service import DuplicatiService
 
 LOGGER = logging.getLogger(__name__)
@@ -61,14 +61,38 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set buttons for Duplicati integration."""
-    device_info = hass.data[DOMAIN][entry.entry_id]["device_info"]
-    backup_id = hass.data[DOMAIN][entry.entry_id]["backup_id"]
+    backups: dict[str, str] = hass.data[DOMAIN][entry.entry_id]["backups"]
+    for backup_id, backup_name in backups.items():
+        backup = {"id": backup_id, "name": backup_name}
+        buttons = create_backup_buttons(hass, entry, backup)
+        # Add buttons to hass
+        async_add_entities(buttons)
+
+
+def create_backup_buttons(hass: HomeAssistant, entry: ConfigEntry, backup) -> list[Any]:
+    """Create sensor entities for the given resource."""
+    buttons = []
     host = hass.data[DOMAIN][entry.entry_id]["host"]
     service = hass.data[DOMAIN][host]["service"]
+    version_info = hass.data[DOMAIN][entry.entry_id]["version_info"]
+    url = entry.data[CONF_URL]
+    unique_id = f"{host}/{backup["id"]}"
 
-    async_add_entities(
-        DuplicatiButton(service, button, device_info, backup_id) for button in BUTTONS
+    device_info = DeviceInfo(
+        name=backup["name"],
+        model=MODEL,
+        manufacturer=MANUFACTURER,
+        configuration_url=url,
+        sw_version=version_info.get("server_version"),
+        serial_number=unique_id,
+        identifiers={(DOMAIN, unique_id)},
+        entry_type=DeviceEntryType.SERVICE,
     )
+
+    for description in BUTTONS:
+        sensor = DuplicatiButton(service, description, device_info, backup["id"])
+        buttons.append(sensor)
+    return buttons
 
 
 class DuplicatiButton(ButtonEntity):

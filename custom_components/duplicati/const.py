@@ -2,6 +2,8 @@
 
 DOMAIN = "duplicati"
 
+CONF_BACKUPS = "backups"
+
 MODEL = "Backup"
 MANUFACTURER = "Duplicati"
 
