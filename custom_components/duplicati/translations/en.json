@@ -1,23 +1,31 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Backup is already configured"
+            "already_configured": "Backup server is already configured"
         },
         "error": {
+            "api_response": "Invalid response from backup server",
+            "backup_selection": "No backups selected",
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
-            "invalid_id": "Invalid backup ID",
+            "no_backups": "No backups found",
             "unknown": "Unexpected error"
         },
         "step": {
+            "backups": {
+                "data": {
+                    "backups": "Available backups"
+                },
+                "description": "Define the backups to be monitored"
+            },
             "user": {
                 "data": {
                     "id": "Backup ID",
                     "password": "Password",
                     "url": "Backup server URL",
-                    "username": "Username",
                     "verify_ssl": "Verify SSL certificate"
-                }
+                },
+                "description": "Define the connection details"
             }
         }
     },
@@ -59,12 +67,22 @@
     },
     "options": {
         "error": {
+            "api_response": "Invalid response from backup server",
+            "backup_selection": "No backups selected",
+            "cannot_connect": "Failed to connect",
+            "invalid_auth": "Invalid authentication",
+            "no_backups": "No backups found",
+            "scan_interval": "Invalid or missing scan interval",
             "unknown": "Unexpected error"
         },
         "step": {
             "init": {
                 "data": {
+                    "backups": "Backups to monitor",
                     "scan_interval": "Scan interval [s]"
+                },
+                "data_description": {
+                    "scan_interval": "Note: The defined scan interval is used for all backups."
                 }
             }
         }
