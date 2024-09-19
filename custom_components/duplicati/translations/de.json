@@ -1,23 +1,31 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Dieses Backup ist bereits konfiguriert"
+            "already_configured": "Dieser Backup-Server ist bereits konfiguriert"
         },
         "error": {
+            "api_response": "Ungültige Antwort vom Backup-Server",
+            "backup_selection": "Keine Backups ausgewählt",
             "cannot_connect": "Verbindung fehlgeschlagen",
             "invalid_auth": "Authentifizierung fehlgeschlagen",
-            "invalid_id": "Backup-ID ungültig",
+            "no_backups": "Keine Backups gefunden",
             "unknown": "Unerwarteter Fehler"
         },
         "step": {
+            "backups": {
+                "data": {
+                    "backups": "Verfügbare Backups"
+                },
+                "description": "Definiere die zu überwachenden Backups"
+            },
             "user": {
                 "data": {
                     "id": "Backup-ID",
                     "password": "Passwort",
                     "url": "Backup-Server URL",
-                    "username": "Benutzername",
                     "verify_ssl": "SSL-Zertifikat überprüfen"
-                }
+                },
+                "description": "Definiere die Verbindungsdetails"
             }
         }
     },
@@ -31,40 +39,50 @@
             }
         },
         "sensor": {
-            "last_backup_execution": {
-                "name": "Datum"
-            },
             "last_backup_duration": {
                 "name": "Dauer"
             },
             "last_backup_error_message": {
                 "name": "Fehlermeldung"
             },
-            "last_backup_source_size": {
-                "name": "Quellgrösse"
+            "last_backup_execution": {
+                "name": "Datum"
             },
             "last_backup_source_files_count": {
                 "name": "Quelldateien"
             },
-            "last_backup_target_size": {
-                "name": "Zielgrösse"
+            "last_backup_source_size": {
+                "name": "Quellgrösse"
+            },
+            "last_backup_status": {
+                "name": "Status"
             },
             "last_backup_target_files_count": {
                 "name": "Zieldateien"
             },
-            "last_backup_status": {
-                "name": "Status"
+            "last_backup_target_size": {
+                "name": "Zielgrösse"
             }
         }
     },
     "options": {
         "error": {
+            "api_response": "Ungültige Antwort vom Backup-Server",
+            "backup_selection": "Keine Backups ausgewählt",
+            "cannot_connect": "Verbindung fehlgeschlagen",
+            "invalid_auth": "Authentifizierung fehlgeschlagen",
+            "no_backups": "Keine Backups gefunden",
+            "scan_interval": "Ungültiges oder fehlende Scan-Intervall",
             "unknown": "Unerwarteter Fehler"
         },
         "step": {
             "init": {
                 "data": {
+                    "backups": "Zu überwachende Backups",
                     "scan_interval": "Scan-Intervall [s]"
+                },
+                "data_description": {
+                    "scan_interval": "Hinweis: Das definierte Scan-Intervall wird für alle Backups verwendet."
                 }
             }
         }
