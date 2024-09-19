@@ -7,8 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .api import ApiResponseError, CannotConnect, DuplicatiBackendAPI
-from .config_flow import InvalidAuth
+from .api import ApiResponseError, CannotConnect, DuplicatiBackendAPI, InvalidAuth
 from .const import (
     DOMAIN,
     METRIC_DURATION,
