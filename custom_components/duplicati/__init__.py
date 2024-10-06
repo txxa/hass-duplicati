@@ -76,11 +76,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "host": host,
             "backups": backups,
         }
-        # Forward the setup to your platforms, passing the coordinator to them
-        for platform in PLATFORMS:
-            hass.async_create_task(
-                hass.config_entries.async_forward_entry_setup(entry, platform)
-            )
+        # Forward setup to used platforms
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         # Set up custom services
         await async_setup_services(hass)
     except aiohttp.ClientConnectionError as e:
