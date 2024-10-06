@@ -1,7 +1,5 @@
 """Config flow for Duplicati integration."""
 
-from __future__ import annotations
-
 import logging
 import urllib.parse
 from typing import Any
@@ -14,7 +12,12 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.const import CONF_SCAN_INTERVAL, CONF_URL, CONF_VERIFY_SSL
+from homeassistant.const import (
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    CONF_URL,
+    CONF_VERIFY_SSL,
+)
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
@@ -34,6 +37,7 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_URL): str,
+        vol.Optional(CONF_PASSWORD): str,
         vol.Optional(CONF_VERIFY_SSL, default=vol.Coerce(bool)(False)): bool,
     }
 )
@@ -116,8 +120,8 @@ class DuplicatiConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         """Process user input and create new or update existing config entry."""
         try:
             base_url = data[CONF_URL]
+            password = data.get(CONF_PASSWORD)
             verify_ssl = data[CONF_VERIFY_SSL]
-            password = None  # Duplicati UI PW is not yet supported
             # Create API instance
             api = DuplicatiBackendAPI(base_url, verify_ssl, password)
             # Get the list of available backups
@@ -132,6 +136,8 @@ class DuplicatiConfigFlowHandler(ConfigFlow, domain=DOMAIN):
             # Define scan interval
             data[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
         except aiohttp.ClientConnectionError as e:
+            raise CannotConnect(str(e)) from e
+        except aiohttp.ClientError as e:
             raise CannotConnect(str(e)) from e
         else:
             return (data, response)
