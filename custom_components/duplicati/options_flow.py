@@ -140,17 +140,15 @@ class DuplicatiOptionsFlowHandler(config_entries.OptionsFlow):
         """Manage the options."""
         try:
             errors: dict[str, str] = {}
-            self.backups = await self._async_get_backups()
-            available_backups = self._get_available_backups()
-            available_backups_list = self._get_backup_select_options_list(
-                available_backups
-            )
             configured_backups = list(
                 self.config_entry.data.get(CONF_BACKUPS, {}).keys()
             )
             configured_scan_interval = self.config_entry.data.get(
                 CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
             )
+            available_backups = self.config_entry.data.get(CONF_BACKUPS, {})
+            self.backups = await self._async_get_backups()
+            available_backups = self._get_available_backups()
         except CannotConnect as e:
             _LOGGER.error("Failed to connect: %s", str(e))
             errors["base"] = "cannot_connect"
@@ -166,6 +164,10 @@ class DuplicatiOptionsFlowHandler(config_entries.OptionsFlow):
         except Exception:
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
+        finally:
+            available_backups_list = self._get_backup_select_options_list(
+                available_backups
+            )
 
         # Process user input if provided
         if user_input is not None:
