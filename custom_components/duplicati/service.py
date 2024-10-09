@@ -4,7 +4,6 @@ import asyncio
 import logging
 import urllib.parse
 
-import aiohttp
 from homeassistant.components.persistent_notification import async_create
 from homeassistant.core import HomeAssistant, ServiceCall
 
@@ -71,7 +70,7 @@ class DuplicatiService:
         self.api = api
         self.coordinators = {}
 
-    async def _wait_for_backup_completion(self, backup_id):
+    async def __wait_for_backup_completion(self, backup_id):
         """Wait for the backup process to complete and fire an event."""
         while True:
             # Check the backup progress state
@@ -98,8 +97,9 @@ class DuplicatiService:
             if resp_backup_id == backup_id and resp_phase == "Backup_Complete":
                 break
             _LOGGER.debug(
-                "Backup process for backup with ID '%s' in progress: %s%%",
+                "Backup creation for backup with ID '%s' of server '%s' in progress: %s%%",
                 backup_id,
+                self.api.get_api_host(),
                 resp_progress,
             )
             # Wait for 1 second before checking the backup progress state again
@@ -127,28 +127,29 @@ class DuplicatiService:
     async def async_create_backup(self, backup_id):
         """Service to start a backup."""
         try:
-            _LOGGER.info("Backup process for backup with ID '%s' initiated", backup_id)
+            _LOGGER.info(
+                "Backup creation for backup with ID '%s' of server '%s' initiated",
+                backup_id,
+                self.api.get_api_host(),
+            )
+
             # Check if the backup ID is valid
             backup_id = str(backup_id)
             if backup_id not in self.coordinators:
                 raise DuplicatiServiceException("Unknown backup ID provided")
+
             # Start the backup process
-            _LOGGER.info(
-                "Calling the Duplicati backend API to start the backup process for backup with ID '%s'",
-                backup_id,
-            )
-            resp = await self.api.create_backup(backup_id)
-            if resp is None:
+            response = await self.api.create_backup(backup_id)
+            # Check if response is valid
+            if response is None:
                 raise ApiResponseError("No API response received")
-
-            _LOGGER.debug("Backup creation response: %s", resp)
-
+            _LOGGER.debug("Backup creation response: %s", response)
             # Check if the backup process has been started
-            if "Error" in resp:
-                raise ApiResponseError(resp["Error"])
-            if "Status" not in resp:
+            if "Error" in response:
+                raise ApiResponseError(response["Error"])
+            if "Status" not in response:
                 raise ApiResponseError("No status received in API response")
-            if resp["Status"] != "OK":
+            if response["Status"] != "OK":
                 raise ApiResponseError("Unable to start the backup process")
             # Fire an event to notify that the backup process has started
             self.hass.bus.async_fire(
@@ -158,8 +159,16 @@ class DuplicatiService:
                     "backup_id": backup_id,
                 },
             )
+
             # Wait for the backup process to complete
-            await self._wait_for_backup_completion(backup_id)
+            await self.__wait_for_backup_completion(backup_id)
+
+            # Handle successful backup creation
+            _LOGGER.info(
+                "Backup creation for backup with ID '%s' of server '%s' successfully finished",
+                backup_id,
+                self.api.get_api_host(),
+            )
             # Fire an event to notify that the backup process has finished
             self.hass.bus.async_fire(
                 BACKUP_COMPLETED,
@@ -168,15 +177,15 @@ class DuplicatiService:
                     "backup_id": backup_id,
                 },
             )
-            _LOGGER.info(
-                "Backup creation for backup with ID '%s' sucessfully finished",
-                backup_id,
-            )
             # Refresh the sensor data for the backup
             await self.async_refresh_sensor_data(backup_id)
-        except DuplicatiServiceException as e:
+        except Exception as e:  # noqa: BLE001
+            # Handle failed backup creation
             _LOGGER.error(
-                "Backup creation for backup with ID '%s' failed: %s", backup_id, str(e)
+                "Backup creation for backup with ID '%s' of server '%s' failed: %s",
+                backup_id,
+                self.api.get_api_host(),
+                str(e),
             )
             # Fire an event to notify that the backup process has failed
             self.hass.bus.async_fire(
@@ -186,44 +195,10 @@ class DuplicatiService:
                     "backup_id": backup_id,
                 },
             )
+            # Create a notification in the UI
             async_create(
                 self.hass,
-                f"Backup creation for backup with ID '{backup_id!s}' failed: {e!s}",
-                title="Backup creation error",
-            )
-        except aiohttp.ClientConnectionError as e:
-            _LOGGER.error(
-                "Backup creation for backup with ID '%s' failed: %s", backup_id, str(e)
-            )
-            # Fire an event to notify that the backup process has failed
-            self.hass.bus.async_fire(
-                BACKUP_FAILED,
-                {
-                    "host": self.api.get_api_host(),
-                    "backup_id": backup_id,
-                },
-            )
-            async_create(
-                self.hass,
-                f"Backup creation for backup with ID '{backup_id!s}' failed: {e!s}",
-                title="Backup creation error",
-            )
-
-        except ApiResponseError as e:
-            _LOGGER.error(
-                "Backup creation for backup with ID '%s' failed: %s", backup_id, str(e)
-            )
-            # Fire an event to notify that the backup process has failed
-            self.hass.bus.async_fire(
-                BACKUP_FAILED,
-                {
-                    "host": self.api.get_api_host(),
-                    "backup_id": backup_id,
-                },
-            )
-            async_create(
-                self.hass,
-                f"Backup creation for backup with ID '{backup_id!s}' failed: {e!s}",
+                f"Backup creation for backup with ID '{backup_id!s}' of server '{self.api.get_api_host()}' failed: {e!s}",
                 title="Backup creation error",
             )
 
@@ -234,11 +209,27 @@ class DuplicatiService:
             backup_id = str(backup_id)
             if backup_id not in self.coordinators:
                 raise DuplicatiServiceException("Unknown backup ID provided")
+
             # Get the coordinator of the backup ID
             coordinator = self.coordinators[backup_id]
+            _LOGGER.debug(
+                "Initiate sensor data refresh for backup with ID '%s' of server '%s'",
+                backup_id,
+                self.api.get_api_host(),
+            )
             # Refresh the data
             await coordinator.async_refresh()
-            _LOGGER.info("Sensor data successfully refreshed")
+
+            # Check if the refresh was successful
+            if not coordinator.last_update_success:
+                raise DuplicatiServiceException(coordinator.last_exception_message)
+
+            # Handle successful refresh
+            _LOGGER.info(
+                "Sensor data refresh for backup with ID '%s' of server '%s' successfully completed",
+                backup_id,
+                self.api.get_api_host(),
+            )
             # Fire an event to notify that the sensors have been refreshed
             self.hass.bus.async_fire(
                 SENSORS_REFRESHED,
@@ -247,25 +238,16 @@ class DuplicatiService:
                     "backup_id": backup_id,
                 },
             )
-        except DuplicatiServiceException as e:
+        except Exception as e:  # noqa: BLE001$
+            # Handle failed refresh
             _LOGGER.error(
-                "Sensors of backup with ID '%s' could not be refreshed: %s",
+                "Sensor data refresh for backup with ID '%s' of server '%s' failed",
                 backup_id,
-                str(e),
+                self.api.get_api_host(),
             )
+            # Create a notification in the UI
             async_create(
                 self.hass,
-                f"Sensors of backup with ID '{backup_id!s}' could not be refreshed: {e!s}",
-                title="Sensor refresh error",
-            )
-        except Exception as e:  # noqa: BLE001
-            _LOGGER.error(
-                "Sensors of backup with ID '%s' could not be refreshed: %s",
-                backup_id,
-                str(e),
-            )
-            async_create(
-                self.hass,
-                f"Sensors of backup with ID '{backup_id!s}' could not be refreshed: {e!s}",
+                f"Sensor data refresh for backup with ID '{backup_id!s}' of server '{self.api.get_api_host()}' failed: {str(e)!s}",
                 title="Sensor refresh error",
             )

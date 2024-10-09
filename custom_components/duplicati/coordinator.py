@@ -4,10 +4,10 @@ import logging
 from datetime import datetime, timedelta
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import ApiResponseError, CannotConnect, DuplicatiBackendAPI, InvalidAuth
+from .api import ApiResponseError, DuplicatiBackendAPI
 from .const import (
     DOMAIN,
     METRIC_DURATION,
@@ -45,24 +45,26 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         )
         self.api = api
         self.backup_id = backup_id
+        self.last_exception_message = None
 
     async def _async_update_data(self):
-        """Fetch data from Duplicati API."""
+        """Fetch and process data from Duplicati API."""
         try:
+            _LOGGER.debug(
+                "Start fetching %s data for backup with ID '%s' of server '%s'",
+                self.name,
+                self.backup_id,
+                self.api.get_api_host(),
+            )
             # Get backup info
             backup_info = await self.api.get_backup(self.backup_id)
             if "Error" in backup_info:
                 raise ApiResponseError(backup_info["Error"])
             # Process metrics for sensors and return sensor data
             return self._process_data(backup_info)
-        except CannotConnect as e:
-            _LOGGER.error("Failed to connect: %s", str(e))
-        except InvalidAuth as e:
-            _LOGGER.error("Authentication failed: %s", str(e))
-        except ApiResponseError as e:
-            _LOGGER.error("API response error: %s", str(e))
-        except Exception:
-            _LOGGER.exception("Unexpected exception")
+        except Exception as e:  # noqa: BLE001
+            self.last_exception_message = str(e)
+            raise UpdateFailed(str(e)) from e
 
     def _process_data(self, data):
         """Process raw data into sensor values."""
