@@ -47,6 +47,36 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         self.backup_id = backup_id
         self.last_exception_message = None
 
+    def __truncate_error_message(self, message: str, max_length: int = 255) -> str:
+        """Truncate error message to fit within the character limit."""
+        truncation_indicator = " ... (see log for full message)"
+        available_length = max_length - len(truncation_indicator)
+        # If the message is already within the character limit, return it as is
+        if len(message) <= available_length:
+            return message
+        # Split the message into words and truncate the message
+        words = message.split()
+        truncated = ""
+        for word in words:
+            if len(truncated + word) <= available_length:
+                truncated += word + " "
+            else:
+                break
+        # Add the truncation indicator if the full message is exceeding the limit
+        return truncated.strip() + truncation_indicator
+
+    def __convert_duration_string_to_seconds(self, duration_string: str) -> float:
+        """Convert duration string to seconds."""
+        # Split the duration string into hours, minutes, seconds, and microseconds
+        parts = duration_string.split(":")
+        hours = int(parts[0])
+        minutes = int(parts[1])
+        seconds, microseconds = map(float, parts[2].split("."))
+        microseconds = int(f"{microseconds:.6f}".replace(".", "").ljust(6, "0")[:6])
+        milliseconds = round(microseconds / 1000)
+        # Calculate the total duration in seconds
+        return (hours * 3600) + (minutes * 60) + seconds + (milliseconds / 1000)
+
     async def _async_update_data(self):
         """Fetch and process data from Duplicati API."""
         try:
@@ -98,9 +128,9 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
             last_backup_execution = last_error_date
             last_backup_status = STATUS_ERROR
             if "LastErrorMessage" in data["data"]["Backup"]["Metadata"]:
-                last_backup_error_message = data["data"]["Backup"]["Metadata"][
-                    "LastErrorMessage"
-                ]
+                last_backup_error_message = self.__truncate_error_message(
+                    data["data"]["Backup"]["Metadata"]["LastErrorMessage"]
+                )
                 last_backup_duration = None
                 last_backup_source_size = None
                 last_backup_source_files_count = None
@@ -111,21 +141,8 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
             last_backup_status = STATUS_OK
             last_backup_error_message = "-"
             if "LastBackupDuration" in data["data"]["Backup"]["Metadata"]:
-                last_backup_duration = data["data"]["Backup"]["Metadata"][
-                    "LastBackupDuration"
-                ]
-                # Split the duration string into hours, minutes, seconds, and microseconds
-                parts = last_backup_duration.split(":")
-                hours = int(parts[0])
-                minutes = int(parts[1])
-                seconds, microseconds = map(float, parts[2].split("."))
-                microseconds = int(
-                    f"{microseconds:.6f}".replace(".", "").ljust(6, "0")[:6]
-                )
-                milliseconds = round(microseconds / 1000)
-                # Calculate the total duration in seconds
-                last_backup_duration = (
-                    (hours * 3600) + (minutes * 60) + seconds + (milliseconds / 1000)
+                last_backup_duration = self.__convert_duration_string_to_seconds(
+                    data["data"]["Backup"]["Metadata"]["LastBackupDuration"]
                 )
 
             if "SourceFilesSize" in data["data"]["Backup"]["Metadata"]:
