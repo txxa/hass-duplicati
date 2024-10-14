@@ -17,16 +17,16 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN,
     MANUFACTURER,
-    METRIC_STATUS,
+    METRIC_LAST_STATUS,
     MODEL,
 )
 
 BINARY_SENSORS = {
-    METRIC_STATUS: BinarySensorEntityDescription(
-        key=METRIC_STATUS,
+    METRIC_LAST_STATUS: BinarySensorEntityDescription(
+        key=METRIC_LAST_STATUS,
         icon="mdi:shield-check",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        translation_key=METRIC_STATUS,
+        translation_key=METRIC_LAST_STATUS,
     ),
 }
 
