@@ -20,24 +20,12 @@ from .const import (
     METRIC_EXECUTION,
     METRIC_SOURCE_FILES,
     METRIC_SOURCE_SIZE,
-    METRIC_STATUS,
     METRIC_TARGET_FILES,
     METRIC_TARGET_SIZE,
     MODEL,
-    STATUS_ERROR,
-    STATUS_OK,
 )
 
 SENSORS = {
-    METRIC_STATUS: SensorEntityDescription(
-        key=METRIC_STATUS,
-        icon="mdi:shield-check",
-        device_class=SensorDeviceClass.ENUM,
-        state_class=None,
-        native_unit_of_measurement=None,
-        options=[STATUS_OK, STATUS_ERROR],
-        translation_key=METRIC_STATUS,
-    ),
     METRIC_EXECUTION: SensorEntityDescription(
         key=METRIC_EXECUTION,
         icon="mdi:calendar-clock",

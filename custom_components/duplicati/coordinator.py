@@ -8,6 +8,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api import ApiResponseError, DuplicatiBackendAPI
+from .binary_sensor import BINARY_SENSORS
 from .const import (
     DOMAIN,
     METRIC_DURATION,
@@ -18,8 +19,6 @@ from .const import (
     METRIC_STATUS,
     METRIC_TARGET_FILES,
     METRIC_TARGET_SIZE,
-    STATUS_ERROR,
-    STATUS_OK,
 )
 from .sensor import SENSORS
 
@@ -126,7 +125,7 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
 
         if error:
             last_backup_execution = last_error_date
-            last_backup_status = STATUS_ERROR
+            last_backup_status = True
             if "LastErrorMessage" in data["data"]["Backup"]["Metadata"]:
                 last_backup_error_message = self.__truncate_error_message(
                     data["data"]["Backup"]["Metadata"]["LastErrorMessage"]
@@ -138,7 +137,7 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
                 last_backup_target_files_count = None
         else:
             last_backup_execution = last_backup_date
-            last_backup_status = STATUS_OK
+            last_backup_status = False
             last_backup_error_message = "-"
             if "LastBackupDuration" in data["data"]["Backup"]["Metadata"]:
                 last_backup_duration = self.__convert_duration_string_to_seconds(
@@ -167,11 +166,14 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
 
         processed_data = {}
 
-        for sensor_type in SENSORS:
+        for sensor_type in BINARY_SENSORS:
             # Process data according to sensor type
             if sensor_type == METRIC_STATUS:
                 processed_data[sensor_type] = last_backup_status
-            elif sensor_type == METRIC_EXECUTION:
+
+        for sensor_type in SENSORS:
+            # Process data according to sensor type
+            if sensor_type == METRIC_EXECUTION:
                 processed_data[sensor_type] = last_backup_execution
             elif sensor_type == METRIC_DURATION:
                 processed_data[sensor_type] = last_backup_duration
