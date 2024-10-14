@@ -11,14 +11,14 @@ from .api import ApiResponseError, DuplicatiBackendAPI
 from .binary_sensor import BINARY_SENSORS
 from .const import (
     DOMAIN,
-    METRIC_DURATION,
-    METRIC_ERROR_MESSAGE,
-    METRIC_EXECUTION,
-    METRIC_SOURCE_FILES,
-    METRIC_SOURCE_SIZE,
-    METRIC_STATUS,
-    METRIC_TARGET_FILES,
-    METRIC_TARGET_SIZE,
+    METRIC_LAST_DURATION,
+    METRIC_LAST_ERROR_MESSAGE,
+    METRIC_LAST_EXECUTION,
+    METRIC_LAST_SOURCE_FILES,
+    METRIC_LAST_SOURCE_SIZE,
+    METRIC_LAST_STATUS,
+    METRIC_LAST_TARGET_FILES,
+    METRIC_LAST_TARGET_SIZE,
 )
 from .sensor import SENSORS
 
@@ -45,6 +45,7 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         self.api = api
         self.backup_id = backup_id
         self.last_exception_message = None
+        self.next_backup_execution = None
 
     def __truncate_error_message(self, message: str, max_length: int = 255) -> str:
         """Truncate error message to fit within the character limit."""
@@ -112,6 +113,20 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         else:
             last_error_date = None
 
+        if (
+            "Schedule" in data["data"]
+            and data["data"]["Schedule"]
+            and "Time" in data["data"]["Schedule"]
+        ):
+            next_backup_execution = data["data"]["Schedule"]["Time"]
+            next_backup_execution = datetime.strptime(
+                next_backup_execution, "%Y-%m-%dT%H:%M:%SZ"
+            )
+            next_backup_execution = next_backup_execution.replace(tzinfo=dt_util.UTC)
+            self.next_backup_execution = next_backup_execution
+        else:
+            next_backup_execution = None
+
         # Check backup state
         if last_error_date and not last_backup_date:
             error = True
@@ -168,24 +183,24 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
 
         for sensor_type in BINARY_SENSORS:
             # Process data according to sensor type
-            if sensor_type == METRIC_STATUS:
+            if sensor_type == METRIC_LAST_STATUS:
                 processed_data[sensor_type] = last_backup_status
 
         for sensor_type in SENSORS:
             # Process data according to sensor type
-            if sensor_type == METRIC_EXECUTION:
+            if sensor_type == METRIC_LAST_EXECUTION:
                 processed_data[sensor_type] = last_backup_execution
-            elif sensor_type == METRIC_DURATION:
+            elif sensor_type == METRIC_LAST_DURATION:
                 processed_data[sensor_type] = last_backup_duration
-            elif sensor_type == METRIC_TARGET_SIZE:
+            elif sensor_type == METRIC_LAST_TARGET_SIZE:
                 processed_data[sensor_type] = last_backup_target_size
-            elif sensor_type == METRIC_TARGET_FILES:
+            elif sensor_type == METRIC_LAST_TARGET_FILES:
                 processed_data[sensor_type] = last_backup_target_files_count
-            elif sensor_type == METRIC_SOURCE_SIZE:
+            elif sensor_type == METRIC_LAST_SOURCE_SIZE:
                 processed_data[sensor_type] = last_backup_source_size
-            elif sensor_type == METRIC_SOURCE_FILES:
+            elif sensor_type == METRIC_LAST_SOURCE_FILES:
                 processed_data[sensor_type] = last_backup_source_files_count
-            elif sensor_type == METRIC_ERROR_MESSAGE:
+            elif sensor_type == METRIC_LAST_ERROR_MESSAGE:
                 processed_data[sensor_type] = last_backup_error_message
 
         return processed_data

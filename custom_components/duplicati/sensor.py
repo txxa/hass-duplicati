@@ -15,80 +15,90 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN,
     MANUFACTURER,
-    METRIC_DURATION,
-    METRIC_ERROR_MESSAGE,
-    METRIC_EXECUTION,
-    METRIC_SOURCE_FILES,
-    METRIC_SOURCE_SIZE,
-    METRIC_TARGET_FILES,
-    METRIC_TARGET_SIZE,
+    METRIC_LAST_DURATION,
+    METRIC_LAST_ERROR_MESSAGE,
+    METRIC_LAST_EXECUTION,
+    METRIC_LAST_SOURCE_FILES,
+    METRIC_LAST_SOURCE_SIZE,
+    METRIC_LAST_TARGET_FILES,
+    METRIC_LAST_TARGET_SIZE,
     MODEL,
+    PROPERTY_NEXT_EXECUTION,
 )
 
 SENSORS = {
-    METRIC_EXECUTION: SensorEntityDescription(
-        key=METRIC_EXECUTION,
+    METRIC_LAST_EXECUTION: SensorEntityDescription(
+        key=METRIC_LAST_EXECUTION,
         icon="mdi:calendar-clock",
         device_class=SensorDeviceClass.TIMESTAMP,
         state_class=None,
         native_unit_of_measurement=None,
-        translation_key=METRIC_EXECUTION,
+        translation_key=METRIC_LAST_EXECUTION,
     ),
-    METRIC_DURATION: SensorEntityDescription(
-        key=METRIC_DURATION,
+    METRIC_LAST_DURATION: SensorEntityDescription(
+        key=METRIC_LAST_DURATION,
         icon="mdi:timer-outline",
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         suggested_unit_of_measurement=UnitOfTime.SECONDS,
         suggested_display_precision=1,
-        translation_key=METRIC_DURATION,
+        translation_key=METRIC_LAST_DURATION,
     ),
-    METRIC_SOURCE_FILES: SensorEntityDescription(
-        key=METRIC_SOURCE_FILES,
+    METRIC_LAST_SOURCE_FILES: SensorEntityDescription(
+        key=METRIC_LAST_SOURCE_FILES,
         icon="mdi:file-multiple",
         device_class=None,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=None,
-        translation_key=METRIC_SOURCE_FILES,
+        translation_key=METRIC_LAST_SOURCE_FILES,
     ),
-    METRIC_SOURCE_SIZE: SensorEntityDescription(
-        key=METRIC_SOURCE_SIZE,
+    METRIC_LAST_SOURCE_SIZE: SensorEntityDescription(
+        key=METRIC_LAST_SOURCE_SIZE,
         icon="mdi:memory",
         device_class=SensorDeviceClass.DATA_SIZE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfInformation.BYTES,
         suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
         suggested_display_precision=2,
-        translation_key=METRIC_SOURCE_SIZE,
+        translation_key=METRIC_LAST_SOURCE_SIZE,
     ),
-    METRIC_TARGET_SIZE: SensorEntityDescription(
-        key=METRIC_TARGET_SIZE,
+    METRIC_LAST_TARGET_SIZE: SensorEntityDescription(
+        key=METRIC_LAST_TARGET_SIZE,
         icon="mdi:memory",
         device_class=SensorDeviceClass.DATA_SIZE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfInformation.BYTES,
         suggested_unit_of_measurement=UnitOfInformation.MEGABYTES,
         suggested_display_precision=2,
-        translation_key=METRIC_TARGET_SIZE,
+        translation_key=METRIC_LAST_TARGET_SIZE,
     ),
-    METRIC_TARGET_FILES: SensorEntityDescription(
-        key=METRIC_TARGET_FILES,
+    METRIC_LAST_TARGET_FILES: SensorEntityDescription(
+        key=METRIC_LAST_TARGET_FILES,
         icon="mdi:file-multiple",
         device_class=None,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=None,
-        translation_key=METRIC_TARGET_FILES,
+        translation_key=METRIC_LAST_TARGET_FILES,
     ),
-    METRIC_ERROR_MESSAGE: SensorEntityDescription(
-        key=METRIC_ERROR_MESSAGE,
+    METRIC_LAST_ERROR_MESSAGE: SensorEntityDescription(
+        key=METRIC_LAST_ERROR_MESSAGE,
         icon="mdi:alert-circle-outline",
         device_class=None,
         state_class=None,
         native_unit_of_measurement=None,
-        translation_key=METRIC_ERROR_MESSAGE,
+        translation_key=METRIC_LAST_ERROR_MESSAGE,
     ),
 }
+
+
+def get_coordinator_class():
+    """Return the coordinator class."""
+    from custom_components.duplicati.coordinator import (
+        DuplicatiDataUpdateCoordinator,
+    )
+
+    return DuplicatiDataUpdateCoordinator
 
 
 async def async_setup_entry(
@@ -170,3 +180,15 @@ class DuplicatiSensor(CoordinatorEntity, SensorEntity):
         if value is None:
             return None
         return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the state attributes."""
+        # Set the last start time attribute
+        if isinstance(self.coordinator, get_coordinator_class()):
+            if (
+                self.entity_description.key == METRIC_LAST_EXECUTION
+                and self.coordinator.next_backup_execution is not None
+            ):
+                return {PROPERTY_NEXT_EXECUTION: self.coordinator.next_backup_execution}
+            return None
