@@ -16,15 +16,16 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.entity_platform import async_get_platforms
 
 from .api import DuplicatiBackendAPI
-from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN, METRIC_LAST_STATUS
 from .coordinator import DuplicatiDataUpdateCoordinator
 from .service import DuplicatiService, async_setup_services, async_unload_services
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.SENSOR, Platform.BINARY_SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -138,6 +139,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         config_entries_to_remove = []
         backup_name_pattern = r"(.+?)\sBackup.*"
 
+        ########## Merge config entries with same server URL ##########
+
         # Get config entries
         domain_config_entries = hass.config_entries.async_entries(DOMAIN)
         if len(domain_config_entries) == 0:
@@ -229,6 +232,20 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.async_create_task(
                 hass.config_entries.async_remove(config_entry_to_remove.entry_id)
             )
+
+        ########## Remove status sensor (replaced as binary sensor) ##########
+
+        # Get platforms
+        platforms = async_get_platforms(hass, DOMAIN)
+        if len(platforms) > 0:
+            for platform in platforms:
+                if platform.domain == Platform.SENSOR:
+                    for entity_name in platform.domain_entities:
+                        entity = platform.domain_entities[entity_name]
+                        # Filter entities (sensors) to remove
+                        if entity.entity_description.key == METRIC_LAST_STATUS:
+                            # Remove entity (sensor)
+                            await platform.async_remove_entity(entity.entity_id)
 
     _LOGGER.info(
         "Migration to configuration version %s.%s successful",

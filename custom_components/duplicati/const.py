@@ -17,6 +17,3 @@ METRIC_TARGET_FILES = "last_backup_target_files_count"
 METRIC_SOURCE_SIZE = "last_backup_source_size"
 METRIC_SOURCE_FILES = "last_backup_source_files_count"
 METRIC_ERROR_MESSAGE = "last_backup_error_message"
-
-STATUS_OK = "OK"
-STATUS_ERROR = "Error"
