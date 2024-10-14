@@ -30,6 +30,11 @@
         }
     },
     "entity": {
+        "binary_sensor": {
+            "last_backup_status": {
+                "name": "Status"
+            }
+        },
         "button": {
             "create_backup": {
                 "name": "Backup erstellen"
@@ -53,9 +58,6 @@
             },
             "last_backup_source_size": {
                 "name": "Quellgrösse"
-            },
-            "last_backup_status": {
-                "name": "Status"
             },
             "last_backup_target_files_count": {
                 "name": "Zieldateien"
