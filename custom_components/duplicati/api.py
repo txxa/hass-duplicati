@@ -52,14 +52,15 @@ class DuplicatiBackendAPI:
     ) -> str | None:
         """Extract a specific cookie from the response."""
         cookies = response.headers.getall("Set-Cookie", [])
-        _LOGGER.debug("Extracting cookie: %s", cookie_name)
-        for cookie in cookies:
-            if cookie.startswith(f"{cookie_name}="):
-                value = cookie.split(";")[0].split("=")[1]
-                value = urllib.parse.unquote(value)
-                _LOGGER.debug("Found cookie %s with value: %s", cookie_name, value)
-                return value
-        _LOGGER.debug("Cookie %s not found", cookie_name)
+        try:
+            for cookie in cookies:
+                if cookie.startswith(f"{cookie_name}="):
+                    value = cookie.split(";")[0].split("=")[1]
+                    return urllib.parse.unquote(value)
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.error(
+                "Extraction of value for cookie '%s' failed: %s", cookie_name, e
+            )
         return None
 
     def __extract_cookie_expiration(
@@ -67,54 +68,56 @@ class DuplicatiBackendAPI:
     ) -> str | None:
         """Extract the expiration of a specific cookie from the response."""
         cookies = response.headers.getall("Set-Cookie", [])
-        _LOGGER.debug("Extracting expiration for cookie: %s", cookie_name)
-        for cookie in cookies:
-            if cookie.startswith(f"{cookie_name}="):
-                expiration = re.search(r"expires=([^;]+)", cookie)
-                if expiration:
-                    expires = expiration.group(1)
-                    try:
+        try:
+            for cookie in cookies:
+                if cookie.startswith(f"{cookie_name}="):
+                    expiration = re.search(r"expires=([^;]+)", cookie)
+                    if expiration:
+                        expires = expiration.group(1)
                         expires_date = datetime.strptime(
                             expires, "%a, %d %b %Y %H:%M:%S %Z"
                         )
-                        value = expires_date.strftime("%s")
-                    except ValueError as e:
-                        _LOGGER.error("Failed to parse cookie expiration date: %s", e)
-                        return ""
-                    else:
-                        _LOGGER.debug(
-                            "Found expiration for cookie %s: %s", cookie_name, value
-                        )
-                        return value
-        _LOGGER.debug("Expiration for cookie %s not found", cookie_name)
+                        return expires_date.strftime("%s")
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.error(
+                "Extraction of expiration date for cookie '%s' failed: %s",
+                cookie_name,
+                e,
+            )
         return None
 
-    def __extract_xsrf_token(self, response: aiohttp.ClientResponse) -> None:
+    def __extract_xsrf_token(self, response: aiohttp.ClientResponse) -> bool:
         """Extract the XSRF-Token from the response headers."""
         xsrf_token = self.__extract_cookie(response, "xsrf-token")
-        if xsrf_token:
+        if xsrf_token and xsrf_token != self.xsrf_token:
             self.xsrf_token = xsrf_token
             self.xsrf_token_expiration = self.__extract_cookie_expiration(
                 response, "xsrf-token"
             )
+            return True
+        return False
 
-    def __extract_session_nonce(self, response: aiohttp.ClientResponse) -> None:
+    def __extract_session_nonce(self, response: aiohttp.ClientResponse) -> bool:
         """Extract the session-nonce from the response headers."""
         session_nonce = self.__extract_cookie(response, "session-nonce")
-        if session_nonce:
+        if session_nonce and session_nonce != self.session_nonce:
             self.session_nonce = session_nonce
             self.session_nonce_expiration = self.__extract_cookie_expiration(
                 response, "session-nonce"
             )
+            return True
+        return False
 
-    def __extract_session_auth(self, response: aiohttp.ClientResponse) -> None:
+    def __extract_session_auth(self, response: aiohttp.ClientResponse) -> bool:
         """Extract the session-auth from the response headers."""
         session_auth = self.__extract_cookie(response, "session-auth")
-        if session_auth:
+        if session_auth and session_auth != self.session_auth:
             self.session_auth = session_auth
             self.session_auth_expiration = self.__extract_cookie_expiration(
                 response, "session-auth"
             )
+            return True
+        return False
 
     async def __parse_json_response(self, response: aiohttp.ClientResponse) -> dict:
         """Parse JSON response."""
@@ -147,13 +150,28 @@ class DuplicatiBackendAPI:
         self, session: aiohttp.ClientSession
     ) -> aiohttp.ClientResponse:
         """Retrieve XSRF token from server cookies."""
+        # Get XSRF token
+        _LOGGER.debug("XSRF token - Initiating token retrieval")
         method = HTTPMethod.GET
+        _LOGGER.debug(
+            "XSRF token - Sending token request: %s %s", method, self.base_url
+        )
         response = await self.__make_request(session, method, self.base_url)
+        _LOGGER.debug(
+            "XSRF token - Response of token request: %s %s",
+            response.status,
+            response.reason,
+        )
         if response.status == HTTPStatus.OK.value:
-            self.__extract_xsrf_token(response)
-            return response
+            if self.__extract_xsrf_token(response):
+                _LOGGER.debug(
+                    "XSRF token - Token successfully extracted: %s", self.xsrf_token
+                )
+                return response
+
         # Handle missing XSRF token
-        _LOGGER.warning("Failed to retrieve XSRF token: %s", response.status)
+        _LOGGER.debug("XSRF token - Response headers: %s", response.headers)
+        _LOGGER.error("XSRF token - Failed to retrieve token")
         url = URL(self.base_url)
         reqeust_info = aiohttp.RequestInfo(
             method=method, url=url, headers=response.headers, real_url=url
@@ -166,108 +184,44 @@ class DuplicatiBackendAPI:
             headers=response.headers,
         )
 
-    async def __make_api_request(
-        self,
-        session: aiohttp.ClientSession,
-        method: str,
-        endpoint: str,
-        headers: dict | None = None,
-        data: dict | None = None,
-        retry_on_missing_token: bool = True,
-    ) -> dict:
-        """Make an API request to the Duplicati backend."""
-        headers = headers or {}
-        url = self.base_url + endpoint
-        now = dt_util.utcnow().strftime("%s")
-        cookies = []
-
-        # Ensure authentication if enabled
-        if self.password:
-            if (
-                not self.session_auth
-                or (
-                    self.session_auth_expiration and self.session_auth_expiration <= now
-                )
-                or not self.session_nonce
-                or (
-                    self.session_nonce_expiration
-                    and self.session_nonce_expiration <= now
-                )
-            ):
-                response = await self.login(session, self.password)
-                # if response.status == HTTPStatus.
-            if self.session_auth:
-                cookies.append(f"session-auth={self.session_auth}")
-            if self.session_nonce:
-                cookies.append(f"session-nonce={self.session_nonce}")
-            if len(cookies) > 0:
-                headers["Cookie"] = "; ".join(cookies)
-
-        # Ensure that XSRF token is used if available
-        if not self.xsrf_token or (
-            self.xsrf_token_expiration and self.xsrf_token_expiration <= now
-        ):
-            response = await self.__get_xsrf_token(session)
-            if "login" in response.url.name:
-                raise InvalidAuth("No password provided")
-        if self.xsrf_token:
-            headers["X-XSRF-Token"] = self.xsrf_token
-
-        # Make the API request
-        response = await self.__make_request(
-            session, method, url, headers=headers, data=data
-        )
-        if response.status == HTTPStatus.UNAUTHORIZED:
-            raise InvalidAuth("Incorrect password provided")
-        if "login" in response.url.name:
-            raise InvalidAuth("No password provided")
-
-        # Handle missing XSRF token
-        if (
-            response.status == HTTPStatus.BAD_REQUEST.value
-            and response.reason
-            and "Missing XSRF Token" in response.reason
-            and retry_on_missing_token
-        ):
-            await self.__get_xsrf_token(session)
-            if self.xsrf_token:
-                headers["X-XSRF-Token"] = self.xsrf_token
-            return await self.__make_api_request(
-                session,
-                method,
-                endpoint,
-                headers,
-                data,
-                retry_on_missing_token=False,
-            )
-        # Parse and return JSON response
-        return await self.__parse_json_response(response)
-
-    def get_api_host(self):
-        """Return the host (including port) from the base URL."""
-        return self.parsed_base_url.netloc
-
-    async def login(
+    async def __do_login(
         self, session: aiohttp.ClientSession, password: str
     ) -> aiohttp.ClientResponse:
         """Login to Duplicati using the cryptographic method."""
         try:
+            _LOGGER.debug("Login - Initiating authentication")
             # Step 1: Get the nonce and salt
             method = HTTPMethod.POST
             url = f"{self.base_url}/login.cgi"
             data = {"get-nonce": 1}
+            _LOGGER.debug("Login - Sending nonce request to get nonce and salt")
             response = await self.__make_request(session, method, url, data=data)
-            # Handle nonce response errors
+            _LOGGER.debug(
+                "Login - Response of nonce request: %s %s",
+                response.status,
+                response.reason,
+            )
+            # Handle nonce request errors
             if response.status != HTTPStatus.OK.value:
+                _LOGGER.error("Login - Failed to retrieve nonce and salt")
                 raise ApiResponseError("Failed to retrieve nonce and salt")
             # Extract xsrf-token cookie
-            self.__extract_xsrf_token(response)
+            if self.__extract_xsrf_token(response):
+                _LOGGER.debug(
+                    "Login - XSRF token successfully extracted: %s", self.xsrf_token
+                )
             # Extract session-nonce cookie
-            self.__extract_session_nonce(response)
+            if self.__extract_session_nonce(response):
+                _LOGGER.debug(
+                    "Login - Session nonce successfully extracted: %s",
+                    self.session_nonce,
+                )
             # Parse the JSON response
             nonce_json = await self.__parse_json_response(response)
+            _LOGGER.debug("Login - Nonce response successfully parsed")
 
             # Step 2: Calculate the salted and nonced password
+            _LOGGER.debug("Login - Calculating salted and nonced password")
             salt = base64.b64decode(nonce_json["Salt"])
             nonce = base64.b64decode(nonce_json["Nonce"])
             salted_pwd = hashlib.sha256(password.encode("utf-8") + salt).hexdigest()
@@ -276,6 +230,7 @@ class DuplicatiBackendAPI:
             ).decode("utf-8")
 
             # Step 3: Send the login request with the nonced password
+            _LOGGER.debug("Login - Sending login request with nonced password")
             method = HTTPMethod.POST
             url = f"{self.base_url}/login.cgi"
             data = {"password": nonced_pwd}
@@ -291,18 +246,33 @@ class DuplicatiBackendAPI:
             )
             # Handle login response errors
             if login_response.status == HTTPStatus.UNAUTHORIZED.value:
-                _LOGGER.debug("Authentication failed: Incorrect password provided")
+                _LOGGER.error(
+                    "Login - Authentication on server '%s' failed: Incorrect password provided",
+                    self.get_api_host(),
+                )
                 raise InvalidAuth("Incorrect password provided")
             if login_response.status != HTTPStatus.OK.value:
+                _LOGGER.error("Login - Unknown error occurred during login")
                 raise ApiResponseError("Unknown error occured")
+            _LOGGER.debug(
+                "Login - Response of login request: %s %s",
+                login_response.status,
+                login_response.reason,
+            )
             # Extract xsrf-token cookie
-            self.__extract_xsrf_token(login_response)
+            if self.__extract_xsrf_token(login_response):
+                _LOGGER.debug(
+                    "Login - New XSRF token successfully extracted: %s", self.xsrf_token
+                )
             # Extract session-auth cookie
-            self.__extract_session_auth(login_response)
+            if self.__extract_session_auth(login_response):
+                _LOGGER.debug(
+                    "Login - Session auth successfully extracted: %s", self.session_auth
+                )
         # Handle other errors
         except ApiResponseError as e:
-            _LOGGER.debug(
-                "Authentication failed: Unknown error occured (code=%s, reason=%s, method=%s, url=%s)",
+            _LOGGER.error(
+                "Login - Authentication failed: Unknown error occured (code=%s, reason=%s, method=%s, url=%s)",
                 response.status,
                 response.reason,
                 method,
@@ -323,10 +293,124 @@ class DuplicatiBackendAPI:
                 headers=response.headers,
             ) from e
         except aiohttp.ClientError as e:
-            raise CannotConnect(f"Authentication failed: {e!s}") from e
+            _LOGGER.error(
+                "Login - Authentication on server '%s' failed: %s",
+                self.get_api_host(),
+                str(e),
+            )
+            raise CannotConnect(
+                f"Authentication on server '{self.get_api_host()}' failed: {e!s}"
+            ) from e
         else:
-            _LOGGER.debug("Login successful")
+            _LOGGER.debug("Login - Authentication successful")
             return login_response
+
+    async def __make_api_request(
+        self,
+        session: aiohttp.ClientSession,
+        method: str,
+        endpoint: str,
+        headers: dict | None = None,
+        data: dict | None = None,
+        retry_on_missing_token: bool = True,
+    ) -> dict:
+        """Make an API request to the Duplicati backend."""
+        headers = headers or {}
+        url = self.base_url + endpoint
+        now = dt_util.utcnow().strftime("%s")
+        cookies = []
+
+        _LOGGER.debug("API call - Starting request for endpoint %s", endpoint)
+
+        # Ensure authentication if enabled
+        if self.password:
+            _LOGGER.debug("API call - Authentication is enabled")
+            if (
+                not self.session_auth
+                or (
+                    self.session_auth_expiration and self.session_auth_expiration <= now
+                )
+                or not self.session_nonce
+                or (
+                    self.session_nonce_expiration
+                    and self.session_nonce_expiration <= now
+                )
+            ):
+                _LOGGER.debug("API call - Session expired or missing, trying to login")
+                response = await self.__do_login(session, self.password)
+            if self.session_auth:
+                cookies.append(f"session-auth={self.session_auth}")
+            if self.session_nonce:
+                cookies.append(f"session-nonce={self.session_nonce}")
+            if len(cookies) > 0:
+                headers["Cookie"] = "; ".join(cookies)
+        else:
+            _LOGGER.debug("API call - Authentication is disabled")
+
+        # Ensure that XSRF token is used if available
+        if not self.xsrf_token or (
+            self.xsrf_token_expiration and self.xsrf_token_expiration <= now
+        ):
+            _LOGGER.debug(
+                "API call - XSRF token missing or expired, trying to retrieve new token"
+            )
+            response = await self.__get_xsrf_token(session)
+            if "login" in response.url.name:
+                _LOGGER.error(
+                    "API call - Redirected to login page, no password provided"
+                )
+                raise InvalidAuth("No password provided")
+        if self.xsrf_token:
+            headers["X-XSRF-Token"] = self.xsrf_token
+
+        # Make the API request
+        _LOGGER.debug("API call - Sending API request: %s %s", method, url)
+        _LOGGER.debug("API call - API request headers: %s", headers)
+        _LOGGER.debug("API call - API request data: %s", data)
+        response = await self.__make_request(
+            session, method, url, headers=headers, data=data
+        )
+        _LOGGER.debug(
+            "API call - Response of API request: %s %s",
+            response.status,
+            response.reason,
+        )
+
+        if response.status == HTTPStatus.UNAUTHORIZED:
+            _LOGGER.error("API call - Unauthorized: Incorrect password provided")
+            raise InvalidAuth("Incorrect password provided")
+        if "login" in response.url.name:
+            _LOGGER.error("API call - Redirected to login page, no password provided")
+            raise InvalidAuth("No password provided")
+
+        # Handle missing XSRF token
+        if (
+            response.status == HTTPStatus.BAD_REQUEST.value
+            and response.reason
+            and "Missing XSRF Token" in response.reason
+            and retry_on_missing_token
+        ):
+            _LOGGER.debug(
+                "API call - Missing XSRF Token, trying to retrieve new token and retrying request"
+            )
+            await self.__get_xsrf_token(session)
+            if self.xsrf_token:
+                headers["X-XSRF-Token"] = self.xsrf_token
+            return await self.__make_api_request(
+                session,
+                method,
+                endpoint,
+                headers,
+                data,
+                retry_on_missing_token=False,
+            )
+        # Parse and return JSON response
+        _LOGGER.debug("API call - Parsing JSON body and returning data dict")
+        return await self.__parse_json_response(response)
+
+    def get_api_host(self):
+        """Return the host (including port) from the base URL."""
+        return self.parsed_base_url.netloc
 
     async def get_backup(self, backup_id: str) -> dict:
         """Get the information of a backup by ID."""
