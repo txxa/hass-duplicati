@@ -16,10 +16,12 @@ This integration allows you to monitor and control your Duplicati backups from w
 - Monitor status, execution time, duration, and other metrics of Duplicati backups.
 - Support for multiple Duplicati instances.
 - Support for multiple backup jobs per Duplicati instance.
+- Web interface password protection support.
 - SSL/TLS support.
 - Create new backups on demand (via button or service call).
 - Refresh sensor data on demand (via button or service call).
 - Event triggering for backup jobs (start, completion, fail).
+- Dynamic backup management.
 - Configurable scan interval for sensor data updates.
 
 ## Installation
