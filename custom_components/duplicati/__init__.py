@@ -236,6 +236,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ########## Remove status sensor (replaced as binary sensor) ##########
 
         # Get platforms
+        entities_to_remove = {}
         platforms = async_get_platforms(hass, DOMAIN)
         if len(platforms) > 0:
             for platform in platforms:
@@ -244,8 +245,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         entity = platform.domain_entities[entity_name]
                         # Filter entities (sensors) to remove
                         if entity.entity_description.key == METRIC_LAST_STATUS:
-                            # Remove entity (sensor)
-                            await platform.async_remove_entity(entity.entity_id)
+                            if entity.entity_id not in entities_to_remove:
+                                # Collect entity (sensor) to remove entity
+                                entities_to_remove[entity.entity_id] = entity
+            # Remove entities (sensors)
+            for entity in entities_to_remove.values():
+                await platform.async_remove_entity(entity.entity_id)
 
     _LOGGER.info(
         "Migration to configuration version %s.%s successful",
