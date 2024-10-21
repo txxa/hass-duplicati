@@ -56,7 +56,7 @@ def create_backup_sensors(
     unique_id = f"{host}/{backup["id"]}"
 
     device_info = DeviceInfo(
-        name=backup["name"],
+        name=f"{backup["name"]} Backup",
         model=MODEL,
         manufacturer=MANUFACTURER,
         configuration_url=url,

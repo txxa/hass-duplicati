@@ -79,7 +79,7 @@ def create_backup_buttons(hass: HomeAssistant, entry: ConfigEntry, backup) -> li
     unique_id = f"{host}/{backup["id"]}"
 
     device_info = DeviceInfo(
-        name=backup["name"],
+        name=f"{backup["name"]} Backup",
         model=MODEL,
         manufacturer=MANUFACTURER,
         configuration_url=url,
