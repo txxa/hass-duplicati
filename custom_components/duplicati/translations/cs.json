@@ -59,16 +59,16 @@
                 }
             },
             "last_backup_source_files_count": {
-                "name": "Zdrojové soubory"
+                "name": "Souborů k záloze"
             },
             "last_backup_source_size": {
-                "name": "Velikost zdroje"
+                "name": "Velikost zálohovaných dat"
             },
             "last_backup_target_files_count": {
-                "name": "Cílové soubory"
+                "name": "Souborů zálohy"
             },
             "last_backup_target_size": {
-                "name": "Cílová velikost"
+                "name": "Velikost zálohy"
             }
         }
     },
