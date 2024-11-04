@@ -1,0 +1,97 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Zálohovací server je již nakonfigurován"
+        },
+        "error": {
+            "api_response": "Neplatná odpověď ze zálohovacího serveru",
+            "backup_selection": "Nejsou vybrány žádné zálohy",
+            "cannot_connect": "Nepodařilo se připojit",
+            "invalid_auth": "Neplatná autentizace",
+            "no_backups": "Žádné zálohy nebyly nalezeny",
+            "unknown": "Neočekávaná chyba"
+        },
+        "step": {
+            "backups": {
+                "data": {
+                    "backups": "Dostupné zálohy"
+                },
+                "description": "Určete zálohy, které mají být monitorovány"
+            },
+            "user": {
+                "data": {
+                    "id": "Id zálohy",
+                    "password": "Heslo",
+                    "url": "Adresa zálohovacího serveru",
+                    "verify_ssl": "Ověřit SSL certifikát"
+                },
+                "description": "Definujte detaily připojení"
+            }
+        }
+    },
+    "entity": {
+        "binary_sensor": {
+            "last_backup_status": {
+                "name": "Stav"
+            }
+        },
+        "button": {
+            "create_backup": {
+                "name": "Vytvořit zálohu"
+            },
+            "refresh_sensor_data": {
+                "name": "Aktualizovat data senzoru"
+            }
+        },
+        "sensor": {
+            "last_backup_duration": {
+                "name": "Doba trvání"
+            },
+            "last_backup_error_message": {
+                "name": "Chybová zpráva"
+            },
+            "last_backup_execution": {
+                "name": "Datum",
+                "state_attributes": {
+                    "next_backup_execution": {
+                        "name": "Další spuštění"
+                    }
+                }
+            },
+            "last_backup_source_files_count": {
+                "name": "Zdrojové soubory"
+            },
+            "last_backup_source_size": {
+                "name": "Velikost zdroje"
+            },
+            "last_backup_target_files_count": {
+                "name": "Cílové soubory"
+            },
+            "last_backup_target_size": {
+                "name": "Cílová velikost"
+            }
+        }
+    },
+    "options": {
+        "error": {
+            "api_response": "Neplatná odpověď ze zálohovacího serveru",
+            "backup_selection": "Nejsou vybrány žádné zálohy",
+            "cannot_connect": "Nepodařilo se připojit",
+            "invalid_auth": "Neplatná autentizace",
+            "no_backups": "Žádné zálohy nebyly nalezeny",
+            "scan_interval": "Neplatný nebo chybějící interval skenování",
+            "unknown": "Neočekávaná chyba"
+        },
+        "step": {
+            "init": {
+                "data": {
+                    "backups": "Zálohy ke sledování",
+                    "scan_interval": "skenovací interval [s]"
+                },
+                "data_description": {
+                    "scan_interval": "Poznámka: Definovaný interval skenování je použit pro všechny zálohy."
+                }
+            }
+        }
+    }
+}
