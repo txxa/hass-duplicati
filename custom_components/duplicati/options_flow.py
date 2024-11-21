@@ -27,11 +27,11 @@ from homeassistant.helpers.selector import (
     selector,
 )
 
-from custom_components.duplicati.coordinator import DuplicatiDataUpdateCoordinator
-
 from .api import ApiResponseError, CannotConnect, DuplicatiBackendAPI, InvalidAuth
 from .button import create_backup_buttons
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .coordinator import DuplicatiDataUpdateCoordinator
+from .model import BackupDefinition
 from .sensor import create_backup_sensors
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ _LOGGER = logging.getLogger(__name__)
 class DuplicatiOptionsFlowHandler(config_entries.OptionsFlow):
     """Options flow handler for the Duplicati integration."""
 
-    backups: dict
+    backup_definitions: list[BackupDefinition]
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
@@ -75,10 +75,11 @@ class DuplicatiOptionsFlowHandler(config_entries.OptionsFlow):
     def _get_available_backups(self) -> dict[str, str]:
         """Return a dictionary of available backup names."""
         backups = {}
-        for backup in self.backups:
-            backup_id = backup["Backup"]["ID"]
-            backup_name = backup["Backup"]["Name"]
-            backups[backup_id] = backup_name
+        for backup_definition in self.backup_definitions:
+            # backup = BackupConfig.from_dict(backup["Backup"])
+            # backup_id = backup.id
+            # backup_name = backup.name
+            backups[backup_definition.backup.id] = backup_definition.backup.name
         return backups
 
     def _get_backup_select_options_list(
@@ -119,20 +120,18 @@ class DuplicatiOptionsFlowHandler(config_entries.OptionsFlow):
             return serial_number.split("/", 1)[1]
         return None
 
-    async def _async_get_backups(self) -> dict:
+    async def _async_get_backups(self) -> list[BackupDefinition]:
         """Get available backups."""
         try:
-            response = await self.api.list_backups()
-            if "Error" in response:
-                raise ApiResponseError(response["Error"])
+            backups = await self.api.list_backups()
             # Check if backups are available
-            if len(response) == 0:
+            if len(backups) == 0:
                 raise BackupsError(
                     f"No backups found for server '{self.api.get_api_host()}'"
                 )
         except aiohttp.ClientConnectionError as e:
             raise CannotConnect(str(e)) from e
-        return response
+        return backups
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -147,7 +146,7 @@ class DuplicatiOptionsFlowHandler(config_entries.OptionsFlow):
                 CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
             )
             available_backups = self.config_entry.data.get(CONF_BACKUPS, {})
-            self.backups = await self._async_get_backups()
+            self.backup_definitions = await self._async_get_backups()
             available_backups = self._get_available_backups()
         except CannotConnect as e:
             _LOGGER.error("Failed to connect: %s", str(e))
@@ -338,9 +337,12 @@ class DuplicatiOptionsFlowHandler(config_entries.OptionsFlow):
     async def _async_add_backup_to_hass(self, backup_id: str) -> bool:
         """Add a backup to Home Assistant."""
         device_registry = self.hass.data[dr.DATA_REGISTRY]
-        for backup in self.backups:
-            b_id = backup["Backup"]["ID"]
-            b_name = backup["Backup"]["Name"]
+        for backup_definition in self.backup_definitions:
+            # backup = BackupConfig.from_dict(backup["Backup"])
+            b_id = backup_definition.backup.id
+            b_name = backup_definition.backup.name
+            # b_id = backup["Backup"]["ID"]
+            # b_name = backup["Backup"]["Name"]
             if b_id == backup_id:
                 # Create coordinator
                 coordinator = DuplicatiDataUpdateCoordinator(
