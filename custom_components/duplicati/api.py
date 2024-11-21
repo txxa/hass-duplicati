@@ -14,6 +14,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 from yarl import URL
 
+from .model import BackupDefinition, BackupProgress
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -412,181 +414,163 @@ class DuplicatiBackendAPI:
         """Return the host (including port) from the base URL."""
         return self.parsed_base_url.netloc
 
-    async def get_backup(self, backup_id: str) -> dict:
+    def validate_backup_id(self, backup_id: str) -> bool:
+        """Validate backup ID format."""
+        return bool(re.match(r"\d+", backup_id))
+
+    async def get_backup(self, backup_id: str) -> BackupDefinition:
         """Get the information of a backup by ID."""
         try:
-            # Validate backup ID
-            if not re.match(r"\d+", backup_id):
+            # Validate input
+            if not self.validate_backup_id(backup_id):
                 raise ValueError("Invalid backup ID format")
+            # Make the API request
             async with aiohttp.ClientSession() as session:
                 endpoint = f"/api/v1/Backup/{backup_id}"
-                return await self.__make_api_request(session, HTTPMethod.GET, endpoint)
-        except aiohttp.ClientConnectionError as e:
-            raise e from e
-        except aiohttp.ClientError as e:
+                response = await self.__make_api_request(
+                    session, HTTPMethod.GET, endpoint
+                )
+                if "Error" in response:
+                    raise ApiResponseError(response["Error"])
+                return BackupDefinition.from_dict(response["data"])
+        except (ValueError, ApiResponseError) as e:
             _LOGGER.debug(
                 "Getting the information of backup with ID '%s' failed: %s",
                 backup_id,
                 str(e),
             )
-            return {"Error": str(e)}
-        except ValueError as e:
-            _LOGGER.debug(
-                "Getting the information of backup with ID '%s' failed: %s",
-                backup_id,
-                str(e),
-            )
-            return {"Error": str(e)}
+            raise
 
     async def create_backup(self, backup_id: str) -> dict:
         """Create a new backup by ID."""
-        # Validate backup ID
-        if not re.match(r"\d+", backup_id):
-            raise ValueError("The provided backup ID has an invalid format")
         try:
-            resp = await self.get_progress_state()
-            progress_state = ""
-            if "Error" in resp:
-                progress_state = resp["Error"]
-            if "Phase" in resp:
-                progress_state = resp["Phase"]
-            if progress_state in {"No active backup", "Backup_Complete", "Error"}:
-                async with aiohttp.ClientSession() as session:
-                    endpoint = f"/api/v1/Backup/{backup_id}/run"
-                    response = await self.__make_api_request(
-                        session, HTTPMethod.POST, endpoint
-                    )
-                    _LOGGER.debug(
-                        "Request to start backup process for backup with ID '%s' sent to Duplicati backend",
-                        backup_id,
-                    )
-                    return response
-            else:
+            # Validate input
+            if not self.validate_backup_id(backup_id):
+                raise ValueError("Invalid backup ID format")
+            # Check if backup process is already running
+            progress_state = await self.get_progress_state()
+            if progress_state.phase not in {
+                "No active backup",
+                "Backup_Complete",
+                "Error",
+            }:
                 raise RuntimeError("The backup process is currently already running")
-        except aiohttp.ClientConnectionError as e:
-            raise e from e
-        except aiohttp.ClientError as e:
+            # Make the API request
+            async with aiohttp.ClientSession() as session:
+                endpoint = f"/api/v1/Backup/{backup_id}/run"
+                response = await self.__make_api_request(
+                    session, HTTPMethod.POST, endpoint
+                )
+                if "Error" in response:
+                    raise ApiResponseError(response["Error"])
+                _LOGGER.debug(
+                    "Request to start backup process for backup with ID '%s' sent to Duplicati backend",
+                    backup_id,
+                )
+                return response
+        except (ValueError, RuntimeError, ApiResponseError) as e:
             _LOGGER.debug(
                 "Starting the backup process for backup with ID '%s' failed: %s",
                 backup_id,
                 str(e),
             )
-            return {"Error": str(e)}
-        except RuntimeError as e:
-            _LOGGER.debug(
-                "Starting the backup process for backup with ID '%s' failed: %s",
-                backup_id,
-                str(e),
-            )
-            return {"Error": str(e)}
-        except ValueError as e:
-            _LOGGER.debug(
-                "Starting the backup process for backup with ID '%s' failed: %s",
-                backup_id,
-                str(e),
-            )
-            return {"Error": str(e)}
+            raise
 
     async def update_backup(self, backup_id: str, data: dict) -> dict:
         """Update the configuration of a backup by ID."""
         try:
-            # Validate backup ID
-            if not re.match(r"\d+", backup_id):
+            # Validate input
+            if not self.validate_backup_id(backup_id):
                 raise ValueError("Invalid backup ID format")
-            # Validate data
             if len(data) == 0:
                 raise ValueError("No data provided for the update")
+
             async with aiohttp.ClientSession() as session:
                 endpoint = f"/api/v1/Backup/{backup_id}"
-                return await self.__make_api_request(
+                response = await self.__make_api_request(
                     session, "PUT", endpoint, data=data
                 )
-        except aiohttp.ClientConnectionError as e:
-            raise e from e
-        except aiohttp.ClientError as e:
+                if "Error" in response:
+                    raise ApiResponseError(response["Error"])
+                return response
+        except (ValueError, ApiResponseError) as e:
             _LOGGER.debug(
                 "Updating the configuration for backup with ID '%s' failed: %s",
                 backup_id,
                 str(e),
             )
-            return {"Error": str(e)}
-        except ValueError as e:
-            _LOGGER.debug(
-                "Updating the configuration for backup with ID '%s' failed: %s",
-                backup_id,
-                str(e),
-            )
-            return {"Error": str(e)}
+            raise
 
     async def delete_backup(self, backup_id: str) -> dict:
         """Delete the configuration of a backup by ID."""
         try:
-            # Validate backup ID
-            if not re.match(r"\d+", backup_id):
+            # Validate input
+            if not self.validate_backup_id(backup_id):
                 raise ValueError("Invalid backup ID format")
+
             async with aiohttp.ClientSession() as session:
                 endpoint = f"/api/v1/Backup/{backup_id}"
-                return await self.__make_api_request(
+                response = await self.__make_api_request(
                     session, HTTPMethod.DELETE, endpoint
                 )
-        except aiohttp.ClientConnectionError as e:
-            raise e from e
-        except aiohttp.ClientError as e:
+                if "Error" in response:
+                    raise ApiResponseError(response["Error"])
+                return response
+        except (ValueError, ApiResponseError) as e:
             _LOGGER.debug(
                 "Deleting the configuration of backup with ID '%s' failed: %s",
                 backup_id,
                 str(e),
             )
-            return {"Error": str(e)}
-        except ValueError as e:
-            _LOGGER.debug(
-                "Deleting the configuration of backup with ID '%s' failed: %s",
-                backup_id,
-                str(e),
-            )
-            return {"Error": str(e)}
+            raise
 
-    async def list_backups(self) -> dict:
+    async def list_backups(self) -> list[BackupDefinition]:
         """Get a list of all backups."""
         try:
             async with aiohttp.ClientSession() as session:
                 endpoint = "/api/v1/Backups"
-                return await self.__make_api_request(session, HTTPMethod.GET, endpoint)
-        except aiohttp.ClientConnectionError as e:
-            raise e from e
-        except aiohttp.ClientError as e:
-            _LOGGER.debug(
-                "Listing the configured backups failed: %s",
-                str(e),
-            )
-            return {"Error": str(e)}
+                response = await self.__make_api_request(
+                    session, HTTPMethod.GET, endpoint
+                )
+                if "Error" in response:
+                    raise ApiResponseError(response["Error"])
+                return [
+                    BackupDefinition.from_dict(backup_definition)
+                    for backup_definition in response
+                ]
+        except ApiResponseError as e:
+            _LOGGER.debug("Listing the configured backups failed: %s", str(e))
+            raise
 
-    async def get_progress_state(self) -> dict:
+    async def get_progress_state(self) -> BackupProgress:
         """Get the current progress state of the backup process."""
         try:
             async with aiohttp.ClientSession() as session:
                 endpoint = "/api/v1/ProgressState"
-                return await self.__make_api_request(session, HTTPMethod.GET, endpoint)
-        except aiohttp.ClientConnectionError as e:
-            raise e from e
-        except aiohttp.ClientError as e:
-            _LOGGER.debug(
-                "Getting the current progress state failed: %s",
-                str(e),
-            )
-            return {"Error": str(e)}
+                response = await self.__make_api_request(
+                    session, HTTPMethod.GET, endpoint
+                )
+                if "Error" in response:
+                    raise ApiResponseError(response["Error"])
+                return BackupProgress.from_dict(response)
+        except ApiResponseError as e:
+            _LOGGER.debug("Getting the current progress state failed: %s", str(e))
+            raise
 
     async def get_system_info(self) -> dict:
         """Get system information."""
         try:
             async with aiohttp.ClientSession() as session:
                 endpoint = "/api/v1/SystemInfo"
-                return await self.__make_api_request(session, HTTPMethod.GET, endpoint)
-        except aiohttp.ClientConnectionError as e:
-            raise e from e
-        except aiohttp.ClientError as e:
+                response = await self.__make_api_request(
+                    session, HTTPMethod.GET, endpoint
+                )
+                if "Error" in response:
+                    raise ApiResponseError(response["Error"])
+                return response
+        except ApiResponseError as e:
             _LOGGER.debug(
                 "Getting the system information of the Duplicati backend server failed: %s",
                 str(e),
             )
-            return {"Error": str(e)}
+            raise

@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import urllib.parse
 
 from homeassistant.components.persistent_notification import async_create
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -74,34 +73,28 @@ class DuplicatiService:
         """Wait for the backup process to complete and fire an event."""
         while True:
             # Check the backup progress state
-            response = await self.api.get_progress_state()
-            resp_backup_id = response["BackupID"]
-            resp_phase = response["Phase"]
-            resp_progress = response["OverallProgress"]
+            progress = await self.api.get_progress_state()
+
             # Check if the backup process has failed
-            if resp_backup_id == backup_id and resp_phase == "Error":
+            if progress.backup_id == backup_id and progress.phase == "Error":
                 error_message = "Error while creating backup"
-                response = await self.api.get_backup(backup_id)
-                if "LastErrorMessage" in response["data"]["Backup"]["Metadata"]:
-                    error_message = response["data"]["Backup"]["Metadata"][
-                        "LastErrorMessage"
-                    ]
+                backup_definition = await self.api.get_backup(backup_id)
+                if backup_definition.backup.metadata.last_error_message:
+                    error_message = backup_definition.backup.metadata.last_error_message
                 if error_message == "No route to host":
-                    if "TargetURL" in response["data"]["Backup"]:
-                        target = urllib.parse.urlparse(
-                            response["data"]["Backup"]["TargetURL"]
-                        )
-                    error_message += f" '{target.netloc}'"
+                    error_message += f" '{backup_definition.backup.target_url.host}'"
                 raise DuplicatiServiceException(error_message)
+
             # Check if the backup process has finished
-            if resp_backup_id == backup_id and resp_phase == "Backup_Complete":
+            if progress.backup_id == backup_id and progress.phase == "Backup_Complete":
                 break
             _LOGGER.debug(
                 "Backup creation for backup with ID '%s' of server '%s' in progress: %s%%",
                 backup_id,
                 self.api.get_api_host(),
-                resp_progress,
+                progress.overall_progress,
             )
+
             # Wait for 1 second before checking the backup progress state again
             await asyncio.sleep(1)
 

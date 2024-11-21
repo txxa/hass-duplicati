@@ -1,13 +1,12 @@
 """Coordinator for Duplicati backup software."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.util import dt as dt_util
 
-from .api import ApiResponseError, DuplicatiBackendAPI
+from .api import DuplicatiBackendAPI
 from .binary_sensor import BINARY_SENSORS
 from .const import (
     DOMAIN,
@@ -20,6 +19,7 @@ from .const import (
     METRIC_LAST_TARGET_FILES,
     METRIC_LAST_TARGET_SIZE,
 )
+from .model import BackupDefinition
 from .sensor import SENSORS
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,98 +86,80 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
                 self.backup_id,
                 self.api.get_api_host(),
             )
-            # Get backup info
-            backup_info = await self.api.get_backup(self.backup_id)
-            if "Error" in backup_info:
-                raise ApiResponseError(backup_info["Error"])
+            # Get backup definition
+            backup_definition = await self.api.get_backup(self.backup_id)
+
             # Process metrics for sensors and return sensor data
-            return self._process_data(backup_info)
+            return self._process_data(backup_definition)
         except Exception as e:  # noqa: BLE001
             self.last_exception_message = str(e)
             raise UpdateFailed(str(e)) from e
 
-    def _process_data(self, data):
+    def _process_data(self, data: BackupDefinition):
         """Process raw data into sensor values."""
 
-        if "LastBackupDate" in data["data"]["Backup"]["Metadata"]:
-            last_backup_date = data["data"]["Backup"]["Metadata"]["LastBackupDate"]
-            last_backup_date = datetime.strptime(last_backup_date, "%Y%m%dT%H%M%SZ")
-            last_backup_date = last_backup_date.replace(tzinfo=dt_util.UTC)
-        else:
-            last_backup_date = None
-
-        if "LastErrorDate" in data["data"]["Backup"]["Metadata"]:
-            last_error_date = data["data"]["Backup"]["Metadata"]["LastErrorDate"]
-            last_error_date = datetime.strptime(last_error_date, "%Y%m%dT%H%M%SZ")
-            last_error_date = last_error_date.replace(tzinfo=dt_util.UTC)
-        else:
-            last_error_date = None
-
-        if (
-            "Schedule" in data["data"]
-            and data["data"]["Schedule"]
-            and "Time" in data["data"]["Schedule"]
-        ):
-            next_backup_execution = data["data"]["Schedule"]["Time"]
-            next_backup_execution = datetime.strptime(
-                next_backup_execution, "%Y-%m-%dT%H:%M:%SZ"
-            )
-            next_backup_execution = next_backup_execution.replace(tzinfo=dt_util.UTC)
-            self.next_backup_execution = next_backup_execution
-        else:
-            next_backup_execution = None
+        # backup = BackupConfig.from_dict(data)
+        backup_definition = data
 
         # Check backup state
-        if last_error_date and not last_backup_date:
+        error = False
+        if (
+            backup_definition.backup.metadata.last_error_date
+            and not backup_definition.backup.metadata.last_backup_date
+        ):
             error = True
-        elif last_error_date and last_backup_date:
-            if last_error_date > last_backup_date:
+        elif (
+            backup_definition.backup.metadata.last_error_date
+            and backup_definition.backup.metadata.last_backup_date
+        ):
+            if (
+                backup_definition.backup.metadata.last_error_date
+                > backup_definition.backup.metadata.last_backup_date
+            ):
                 error = True
             else:
                 error = False
-        elif not last_error_date and last_backup_date:
+        elif (
+            not backup_definition.backup.metadata.last_error_date
+            and backup_definition.backup.metadata.last_backup_date
+        ):
             error = False
 
         if error:
-            last_backup_execution = last_error_date
+            last_backup_execution = backup_definition.backup.metadata.last_error_date
             last_backup_status = True
-            if "LastErrorMessage" in data["data"]["Backup"]["Metadata"]:
-                last_backup_error_message = self.__truncate_error_message(
-                    data["data"]["Backup"]["Metadata"]["LastErrorMessage"]
-                )
-                last_backup_duration = None
-                last_backup_source_size = None
-                last_backup_source_files_count = None
-                last_backup_target_size = None
-                last_backup_target_files_count = None
+            last_backup_error_message = (
+                backup_definition.backup.metadata.last_error_message
+            )
+            last_backup_duration = None
+            last_backup_source_size = None
+            last_backup_source_files_count = None
+            last_backup_target_size = None
+            last_backup_target_files_count = None
         else:
-            last_backup_execution = last_backup_date
+            last_backup_execution = backup_definition.backup.metadata.last_backup_date
             last_backup_status = False
             last_backup_error_message = "-"
-            if "LastBackupDuration" in data["data"]["Backup"]["Metadata"]:
-                last_backup_duration = self.__convert_duration_string_to_seconds(
-                    data["data"]["Backup"]["Metadata"]["LastBackupDuration"]
-                )
+            last_backup_duration = (
+                backup_definition.backup.metadata.last_backup_duration
+            )
+            if last_backup_duration:
+                last_backup_duration = last_backup_duration.total_seconds()
+            last_backup_source_size = (
+                backup_definition.backup.metadata.source_files_size
+            )
+            last_backup_source_files_count = (
+                backup_definition.backup.metadata.source_files_count
+            )
+            last_backup_target_size = (
+                backup_definition.backup.metadata.target_files_size
+            )
+            last_backup_target_files_count = (
+                backup_definition.backup.metadata.target_files_count
+            )
 
-            if "SourceFilesSize" in data["data"]["Backup"]["Metadata"]:
-                last_backup_source_size = data["data"]["Backup"]["Metadata"][
-                    "SourceFilesSize"
-                ]
-
-            if "SourceFilesCount" in data["data"]["Backup"]["Metadata"]:
-                last_backup_source_files_count = data["data"]["Backup"]["Metadata"][
-                    "SourceFilesCount"
-                ]
-
-            if "TargetFilesSize" in data["data"]["Backup"]["Metadata"]:
-                last_backup_target_size = data["data"]["Backup"]["Metadata"][
-                    "TargetFilesSize"
-                ]
-
-            if "TargetFilesCount" in data["data"]["Backup"]["Metadata"]:
-                last_backup_target_files_count = data["data"]["Backup"]["Metadata"][
-                    "TargetFilesCount"
-                ]
+        if backup_definition.schedule:
+            self.next_backup_execution = backup_definition.schedule.time
 
         processed_data = {}
 

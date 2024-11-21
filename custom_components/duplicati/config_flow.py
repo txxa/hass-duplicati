@@ -29,6 +29,7 @@ from homeassistant.helpers.selector import (
 
 from .api import ApiResponseError, CannotConnect, DuplicatiBackendAPI, InvalidAuth
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .model import BackupDefinition
 from .options_flow import DuplicatiOptionsFlowHandler
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,16 +50,19 @@ class DuplicatiConfigFlowHandler(ConfigFlow, domain=DOMAIN):
     VERSION = 2
     title: str
     data: dict[str, Any]
-    backups: list[dict[str, Any]]
+    backup_definitions: list[BackupDefinition]
 
     def _get_available_backups(self) -> dict[str, str]:
         """Return a dictionary of available backup names."""
-        backups = {}
-        for backup in self.backups:
-            backup_id = backup["Backup"]["ID"]
-            backup_name = backup["Backup"]["Name"]
-            backups[backup_id] = backup_name
-        return backups
+        backup_definitions = {}
+        for backup_definition in self.backup_definitions:
+            # backup = BackupConfig.from_dict(backup["Backup"])
+            # backup_id = backup.id
+            # backup_name = backup.name
+            backup_definitions[backup_definition.backup.id] = (
+                backup_definition.backup.name
+            )
+        return backup_definitions
 
     def _get_backup_select_options_list(
         self, backups: dict[str, str]
@@ -85,9 +89,10 @@ class DuplicatiConfigFlowHandler(ConfigFlow, domain=DOMAIN):
                     if entry.data[CONF_URL] == user_input[CONF_URL]:
                         return self.async_abort(reason="already_configured")
                 # Validate input
-                self.data, self.backups = await self._async_validate_user_step_input(
-                    user_input
-                )
+                (
+                    self.data,
+                    self.backup_definitions,
+                ) = await self._async_validate_user_step_input(user_input)
                 # Define entry title
                 host = urllib.parse.urlparse(user_input[CONF_URL]).netloc
                 self.title = host
@@ -125,11 +130,9 @@ class DuplicatiConfigFlowHandler(ConfigFlow, domain=DOMAIN):
             # Create API instance
             api = DuplicatiBackendAPI(base_url, verify_ssl, password)
             # Get the list of available backups
-            response = await api.list_backups()
-            if "Error" in response:
-                raise ApiResponseError(response["Error"])
+            backups = await api.list_backups()
             # Check if backups are available
-            if len(response) == 0:
+            if len(backups) == 0:
                 raise BackupsError(
                     f"No backups found for server '{api.get_api_host()}'"
                 )
@@ -140,7 +143,7 @@ class DuplicatiConfigFlowHandler(ConfigFlow, domain=DOMAIN):
         except aiohttp.ClientError as e:
             raise CannotConnect(str(e)) from e
         else:
-            return (data, response)
+            return (data, backups)
 
     async def async_step_backups(
         self, user_input: dict[str, Any] | None = None
