@@ -64,12 +64,12 @@ async def async_setup_entry(
     backups: dict[str, str] = hass.data[DOMAIN][entry.entry_id]["backups"]
     for backup_id, backup_name in backups.items():
         backup = {"id": backup_id, "name": backup_name}
-        buttons = create_backup_buttons(hass, entry, backup)
+        buttons = create_buttons(hass, entry, backup)
         # Add buttons to hass
         async_add_entities(buttons)
 
 
-def create_backup_buttons(hass: HomeAssistant, entry: ConfigEntry, backup) -> list[Any]:
+def create_buttons(hass: HomeAssistant, entry: ConfigEntry, backup) -> list[Any]:
     """Create sensor entities for the given resource."""
     buttons = []
     host = hass.data[DOMAIN][entry.entry_id]["host"]
