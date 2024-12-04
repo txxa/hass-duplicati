@@ -40,12 +40,12 @@ async def async_setup_entry(
     for backup_id, backup_name in backups.items():
         coordinator = coordinators[backup_id]
         backup = {"id": backup_id, "name": backup_name}
-        sensors = create_backup_sensors(hass, entry, backup, coordinator)
+        sensors = create_binary_sensors(hass, entry, backup, coordinator)
         # Add sensors to hass
         async_add_entities(sensors)
 
 
-def create_backup_sensors(
+def create_binary_sensors(
     hass: HomeAssistant, entry: ConfigEntry, backup, coordinator
 ) -> list[Any]:
     """Create sensor entities for the given resource."""
