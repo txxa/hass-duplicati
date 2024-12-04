@@ -21,6 +21,7 @@ from homeassistant.helpers.entity_platform import async_get_platforms
 from .api import DuplicatiBackendAPI
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN, METRIC_LAST_STATUS
 from .coordinator import DuplicatiDataUpdateCoordinator
+from .manager import DuplicatiEntityManager
 from .service import DuplicatiService, async_setup_services, async_unload_services
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,15 +33,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Duplicati from a config entry."""
     try:
         hass.data.setdefault(DOMAIN, {})
-        # Extract entry data
-        base_url = entry.data[CONF_URL]
-        password = entry.data.get(CONF_PASSWORD)
-        verify_ssl = entry.data[CONF_VERIFY_SSL]
-        # Create an instance of DuplicatiBackendAPI
-        api = DuplicatiBackendAPI(base_url, verify_ssl, password)
-        # Get backups and create a coordinator for each backup
+
+        # Create API instance
+        api = DuplicatiBackendAPI(
+            entry.data[CONF_URL],
+            entry.data[CONF_VERIFY_SSL],
+            entry.data.get(CONF_PASSWORD),
+        )
+        # Create backup manager
+        entity_manager = DuplicatiEntityManager(hass, entry, api)
+
+        # Get backups and create coordinators
         backups = entry.data.get(CONF_BACKUPS, {})
-        coordinators = {}
+        coordinators: dict[str, DuplicatiDataUpdateCoordinator] = {}
         for backup_id in backups:
             coordinator = DuplicatiDataUpdateCoordinator(
                 hass,
@@ -52,35 +57,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if len(backups) == 0:
             _LOGGER.error("No backups found in the Duplicati server.")
             return False
+
         # Get version info
         sysinfo_resp = await api.get_system_info()
-        server_version = sysinfo_resp.get("ServerVersion", "Unknown")
-        api_version = sysinfo_resp.get("APIVersion", "Unknown")
         version_info = {
-            "server": server_version,
-            "api": api_version,
+            "server": sysinfo_resp.get("ServerVersion", "Unknown"),
+            "api": sysinfo_resp.get("APIVersion", "Unknown"),
         }
+
         # Create a service for managing Duplicati operations
         host = api.get_api_host()
         if host not in hass.data[DOMAIN]:
             hass.data[DOMAIN][host] = {}
+
         if "service" not in hass.data[DOMAIN][host]:
             service = DuplicatiService(hass, api)
             # Register coordinators
             for coordinator in coordinators.values():
                 service.register_coordinator(coordinator)
             hass.data[DOMAIN][host] = {"service": service}
+
         # Store required entry data in hass domain entry object
         hass.data[DOMAIN][entry.entry_id] = {
+            "api": api,
+            "entity_manager": entity_manager,
             "coordinators": coordinators,
             "version_info": version_info,
             "host": host,
             "backups": backups,
         }
+
         # Forward setup to used platforms
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         # Set up custom services
         await async_setup_services(hass)
+
     except aiohttp.ClientConnectionError as e:
         # Handle authentication or connection errors here
         _LOGGER.error("Failed to connect: %s", str(e))
