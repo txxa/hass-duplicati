@@ -108,21 +108,42 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    _LOGGER.debug("Starting unload of config entry %s", entry.entry_id)
+
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         # Get the service
         host = hass.data[DOMAIN][entry.entry_id]["host"]
-        service = hass.data[DOMAIN][host]["service"]
+        service: DuplicatiService = hass.data[DOMAIN][host]["service"]
+        _LOGGER.debug("Unloaded platforms for host %s", host)
+
         # Remove the coordinator
-        coordinators = hass.data[DOMAIN][entry.entry_id]["coordinators"]
         backups = entry.data.get(CONF_BACKUPS, {})
         for backup_id in backups:
-            service.unregister_coordinator(coordinators[backup_id])
+            coordinator = hass.data[DOMAIN][entry.entry_id]["coordinators"].get(
+                backup_id
+            )
+            if coordinator:
+                service.unregister_coordinator(coordinator)
+                _LOGGER.debug(
+                    "Unregistered coordinator for backup with ID '%s' of server '%s'",
+                    backup_id,
+                    host,
+                )
+
         # Remove the service
         if service.get_number_of_coordinators() == 0:
             await async_unload_services(hass)
             hass.data[DOMAIN].pop(host)
+            _LOGGER.debug("Removed service for host %s", host)
+
         # Remove the entry data
         hass.data[DOMAIN].pop(entry.entry_id)
+        _LOGGER.info(
+            "Successfully removed entry data for config entry %s", entry.entry_id
+        )
+    else:
+        _LOGGER.error("Failed to unload platforms for config entry %s", entry.entry_id)
+
     return unload_ok
 
 
