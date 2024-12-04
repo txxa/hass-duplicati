@@ -133,17 +133,21 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.version,
         entry.minor_version,
     )
+    _LOGGER.debug("Starting migration process for entry ID: %s", entry.entry_id)
 
     # Skip migration if not needed
     if entry.version > 1:
         # This means the user has downgraded from a future version
+        _LOGGER.debug("Migration skipped - entry version > 1")
         return False
 
     # Create a copy of the entry data
     data = {**entry.data}
+    _LOGGER.debug("Created copy of entry data: %s", data)
 
     # Version 1 migration
     if entry.version == 1:
+        _LOGGER.debug("Starting version 1 migration")
         version = 2
         minor_version = 1
         configured_backups = {}
@@ -151,6 +155,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         backup_name_pattern = r"(.+?)\sBackup.*"
 
         ########## Merge config entries with same server URL ##########
+        _LOGGER.debug("Starting config entries merge process")
 
         # Get config entries
         domain_config_entries = hass.config_entries.async_entries(DOMAIN)
@@ -162,9 +167,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 entry.minor_version,
             )
             return False
+        _LOGGER.debug("Found %d config entries for domain", len(domain_config_entries))
 
         # Get device registry
         device_registry = hass.data[dr.DATA_REGISTRY]
+        _LOGGER.debug("Retrieved device registry")
 
         # Define new title
         url = entry.data[CONF_URL]
@@ -175,8 +182,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Iterate over config entries
         for config_entry in domain_config_entries:
             if config_entry.data[CONF_URL] == url:
-                # Get backup ID
-                b_id = config_entry.data[CONF_ID]
+                _LOGGER.debug(
+                    "Processing config entry with ID: %s", config_entry.entry_id
+                )
+
                 # Get device entries
                 device_entries = []
                 for device_entry in device_registry.devices.data.values():
@@ -187,6 +196,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         ):
                             device_entries.append(device_entry)
                             break
+                _LOGGER.debug("Found %d device entries", len(device_entries))
+
                 # Get device (only one device available => index=0)
                 device = device_entries[0] if len(device_entries) > 0 else None
                 if not device:
@@ -197,6 +208,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         entry.minor_version,
                     )
                     return False
+
                 # Get backup name
                 device_name = device.name if device and device.name else ""
                 match = re.match(backup_name_pattern, device_name)
@@ -204,26 +216,35 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     backup_name = match.group(1).strip()
                 else:
                     backup_name = f"Backup (id={backup_id})"
-                # Create backups dictionary
-                configured_backups[b_id] = backup_name
-                # Update device
-                if b_id == backup_id:
-                    # Rename device
-                    device_registry.async_update_device(
-                        device_id=device.id, name=backup_name
-                    )
-                elif config_entry.entry_id != entry.entry_id:
-                    # Rename device and move device to migrated entry
-                    device_registry.async_update_device(
-                        device_id=device.id,
-                        name=backup_name,
-                        add_config_entry=entry,
-                        remove_config_entry_id=config_entry.entry_id,
-                    )
-                    # Collect old entries (with same URL but different backup ID) for removal
-                    config_entries_to_remove.append(config_entry)
+                _LOGGER.debug("Determined backup name: %s", backup_name)
+
+                # Get backup ID
+                b_id = config_entry.data.get(CONF_ID)
+                if b_id is not None:
+                    _LOGGER.debug("Processing backup ID: %s", b_id)
+                    # Create backups dictionary
+                    configured_backups[b_id] = backup_name
+                    # Update device
+                    if b_id == backup_id:
+                        _LOGGER.debug("Renaming device for primary backup")
+                        # Rename device
+                        device_registry.async_update_device(
+                            device_id=device.id, name=backup_name
+                        )
+                    elif config_entry.entry_id != entry.entry_id:
+                        _LOGGER.debug("Moving device to migrated entry")
+                        # Rename device and move device to migrated entry
+                        device_registry.async_update_device(
+                            device_id=device.id,
+                            name=backup_name,
+                            add_config_entry=entry,
+                            remove_config_entry_id=config_entry.entry_id,
+                        )
+                        # Collect old entries (with same URL but different backup ID) for removal
+                        config_entries_to_remove.append(config_entry)
 
         # Update entry data
+        _LOGGER.debug("Updating entry data with new configuration")
         data[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
         data["backups"] = configured_backups
         if CONF_ID in data:
@@ -237,21 +258,26 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             version=version,
             minor_version=minor_version,
         )
+        _LOGGER.debug("Updated config entry with new data")
 
         # Remove old entries with same URL but different backup ID
+        _LOGGER.debug("Removing %d old config entries", len(config_entries_to_remove))
         for config_entry_to_remove in config_entries_to_remove:
             hass.async_create_task(
                 hass.config_entries.async_remove(config_entry_to_remove.entry_id)
             )
 
         ########## Remove status sensor (replaced as binary sensor) ##########
+        _LOGGER.debug("Starting status sensor cleanup")
 
         # Get platforms
         entities_to_remove = {}
         platforms = async_get_platforms(hass, DOMAIN)
+        _LOGGER.debug("Found %d platforms", len(platforms))
         if len(platforms) > 0:
             for platform in platforms:
                 if platform.domain == Platform.SENSOR:
+                    _LOGGER.debug("Processing sensor platform")
                     for entity_name in platform.domain_entities:
                         entity = platform.domain_entities[entity_name]
                         # Filter entities (sensors) to remove
@@ -259,7 +285,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                             if entity.entity_id not in entities_to_remove:
                                 # Collect entity (sensor) to remove entity
                                 entities_to_remove[entity.entity_id] = entity
+                                _LOGGER.debug(
+                                    "Marked entity %s for removal", entity.entity_id
+                                )
             # Remove entities (sensors)
+            _LOGGER.debug("Removing %d entities", len(entities_to_remove))
             for entity in entities_to_remove.values():
                 await platform.async_remove_entity(entity.entity_id)
 
