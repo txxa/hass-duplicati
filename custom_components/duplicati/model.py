@@ -20,16 +20,16 @@ class BackupDefinition:
             """Represents metadata for a Duplicati backup."""
 
             last_backup_date: datetime | None
-            backup_list_count: str
-            total_quota_space: str
-            free_quota_space: str
-            assigned_quota_space: str
-            target_files_size: str
-            target_files_count: str
-            target_size_string: str
-            source_files_size: str
-            source_files_count: str
-            source_size_string: str
+            backup_list_count: str | None
+            total_quota_space: str | None
+            free_quota_space: str | None
+            assigned_quota_space: str | None
+            target_files_size: str | None
+            target_files_count: str | None
+            target_size_string: str | None
+            source_files_size: str | None
+            source_files_count: str | None
+            source_size_string: str | None
             last_backup_started: datetime | None
             last_backup_finished: datetime | None
             last_backup_duration: timedelta | None
@@ -68,19 +68,27 @@ class BackupDefinition:
                 for cls_field, api_field in cls.FIELD_MAPPING.items():
                     value = data.get(api_field)
                     if cls_field.endswith(("_date", "_started", "_finished")):
-                        value = cls.__parse_datetime(value) if value else None
+                        value = (
+                            cls.__parse_datetime(value) if value is not None else None
+                        )
                         if value and not isinstance(value, (datetime, type(None))):
                             raise TypeError(
                                 f"Field {cls_field} must be datetime or None"
                             )
                     elif cls_field.endswith("_duration"):
-                        value = cls.__parse_duration(value) if value else None
+                        value = (
+                            cls.__parse_duration(value) if value is not None else None
+                        )
                         if value and not isinstance(value, (timedelta, type(None))):
                             raise TypeError(
                                 f"Field {cls_field} must be timedelta or None"
                             )
-                    elif cls_field == "last_error_message" and value:
-                        value = cls.__truncate_error_message(value)
+                    elif cls_field == "last_error_message":
+                        value = (
+                            cls.__truncate_error_message(value)
+                            if value is not None
+                            else None
+                        )
                     converted_data[cls_field] = value
                 return cls(**converted_data)
 
@@ -90,9 +98,17 @@ class BackupDefinition:
                 for cls_field, api_field in self.FIELD_MAPPING.items():
                     value = getattr(self, cls_field)
                     if cls_field.endswith(("_date", "_started", "_finished")):
-                        value = self.__datetime_to_string(value) if value else None
+                        value = (
+                            self.__datetime_to_string(value)
+                            if value is not None
+                            else None
+                        )
                     elif cls_field.endswith("_duration"):
-                        value = self.__duration_to_string(value) if value else None
+                        value = (
+                            self.__duration_to_string(value)
+                            if value is not None
+                            else None
+                        )
                     result[api_field] = value
                 return result
 
@@ -260,11 +276,11 @@ class BackupDefinition:
             for cls_field, api_field in cls.FIELD_MAPPING.items():
                 value = data.get(api_field)
                 if cls_field == "metadata":
-                    value = cls.Metadata.from_dict(value) if value else None
+                    value = cls.Metadata.from_dict(value) if value is not None else None
                     if not isinstance(value, cls.Metadata):
                         raise TypeError("Metadata must be a Metadata instance")
                 elif cls_field == "target_url":
-                    value = cls.TargetURL.from_url(value) if value else None
+                    value = cls.TargetURL.from_url(value) if value is not None else None
                     if not isinstance(value, cls.TargetURL):
                         raise TypeError(
                             "Target URL must be a TargetURLComponents instance"
@@ -319,7 +335,7 @@ class BackupDefinition:
                     if not isinstance(value, int):
                         raise TypeError("Schedule ID must be an integer")
                 elif cls_field in ["time", "last_run"]:
-                    value = cls.__parse_datetime(value) if value else None
+                    value = cls.__parse_datetime(value) if value is not None else None
                     if value and not isinstance(value, (datetime, type(None))):
                         raise TypeError(f"Field {cls_field} must be datetime or None")
                 converted_data[cls_field] = value
@@ -357,21 +373,23 @@ class BackupDefinition:
 
     @classmethod
     def from_dict(cls, data: dict):
-        """Create BackupConfig instance from API response."""
+        """Create BackupDefinition instance from API response."""
         converted_data = {}
+        if "data" in data:
+            data = data["data"]
         for cls_field, api_field in cls.FIELD_MAPPING.items():
             value = data.get(api_field)
             if cls_field == "backup":
-                value = cls.Backup.from_dict(value) if value else None
+                value = cls.Backup.from_dict(value) if value is not None else None
                 if not isinstance(value, cls.Backup):
                     raise TypeError("Backup must be a Backup instance")
             elif cls_field == "schedule":
-                value = cls.Schedule.from_dict(value) if value else None
+                value = cls.Schedule.from_dict(value) if value is not None else None
             converted_data[cls_field] = value
         return cls(**converted_data)
 
     def to_dict(self) -> dict:
-        """Convert BackupConfig instance to API response format."""
+        """Convert BackupDefinition instance to API response format."""
         result = {}
         for cls_field, api_field in self.FIELD_MAPPING.items():
             value = getattr(self, cls_field)
@@ -430,6 +448,8 @@ class BackupProgress:
     def from_dict(cls, data: dict):
         """Create ProgressState instance from API response."""
         converted_data = {}
+        if "data" in data:
+            data = data["data"]
         for cls_field, api_field in cls.FIELD_MAPPING.items():
             if cls_field in [
                 "task_id",
