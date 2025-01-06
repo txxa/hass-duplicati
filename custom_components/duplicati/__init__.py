@@ -18,7 +18,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import async_get_platforms
 
+from custom_components.duplicati.http_client import HttpClient
+
 from .api import DuplicatiBackendAPI
+from .auth_strategies import CookieAuthStrategy
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN, METRIC_LAST_STATUS
 from .coordinator import DuplicatiDataUpdateCoordinator
 from .manager import DuplicatiEntityManager
@@ -34,12 +37,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         hass.data.setdefault(DOMAIN, {})
 
+        # Create http client
+        http_client = HttpClient(entry.data[CONF_VERIFY_SSL])
+        # Create auth strategy
+        auth_strategy = CookieAuthStrategy(
+            entry.data[CONF_URL], entry.data[CONF_VERIFY_SSL], http_client=http_client
+        )
         # Create API instance
         api = DuplicatiBackendAPI(
             entry.data[CONF_URL],
             entry.data[CONF_VERIFY_SSL],
-            entry.data.get(CONF_PASSWORD),
+            entry.data[CONF_PASSWORD],
+            auth_strategy,
+            http_client=http_client,
         )
+
         # Create backup manager
         entity_manager = DuplicatiEntityManager(hass, entry, api)
 

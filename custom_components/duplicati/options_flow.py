@@ -17,9 +17,10 @@ from homeassistant.helpers.selector import (
     selector,
 )
 
-from .api import ApiResponseError, CannotConnect, DuplicatiBackendAPI, InvalidAuth
+from .api import ApiResponseError, DuplicatiBackendAPI, InvalidAuth
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .flow_base import BackupsError, DuplicatiFlowHandlerBase
+from .http_client import CannotConnect
 from .manager import DuplicatiEntityManager
 
 _LOGGER = logging.getLogger(__name__)
@@ -105,7 +106,7 @@ class DuplicatiOptionsFlowHandler(OptionsFlow, DuplicatiFlowHandlerBase):
             # Set currently configured backup as available backups (fallback in case of backup retrieval errors)
             available_backups = currently_configured_backups
             # Get available backup definitions
-            backups = await self.api.list_backups()
+            backups = await self.api.get_backups()
             self._validate_backup_definitions(backups)
             self.available_backup_definitions = backups
             # Get available backups
