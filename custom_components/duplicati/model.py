@@ -164,7 +164,7 @@ class BackupDefinition:
             @staticmethod
             def __truncate_error_message(message: str, max_length: int = 255) -> str:
                 """Truncate error message to fit within the character limit."""
-                truncation_indicator = " ... (see log for full message)"
+                truncation_indicator = "... [truncated]"
                 available_length = max_length - len(truncation_indicator)
 
                 if len(message) <= available_length:

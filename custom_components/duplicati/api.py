@@ -6,9 +6,8 @@ import urllib.parse
 
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.duplicati.http_client import HttpClient
-
 from .auth_interface import DuplicatiAuthStrategy
+from .http_client import HttpClient, HttpResponse
 from .model import BackupDefinition, BackupProgress
 from .rest_interface import RestApiInterface
 
@@ -17,10 +16,6 @@ _LOGGER = logging.getLogger(__name__)
 
 class ApiResponseError(HomeAssistantError):
     """Error to indicate a processing error during an API request."""
-
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate invalid authentication during an API request."""
 
 
 class DuplicatiBackendAPI(RestApiInterface):
@@ -70,10 +65,12 @@ class DuplicatiBackendAPI(RestApiInterface):
         if self.http_client and auth_headers:
             self.http_client.add_headers(auth_headers)
 
-    async def __handle_api_error(self, error: Exception, url: str) -> None:
+    def __handle_api_response_error(self, response: HttpResponse) -> None:
         """Handle API specific errors."""
-        if "login" in url:
-            raise InvalidAuth("Authentication failed") from error
+        if not response.body:
+            raise ApiResponseError("No response body")
+        if "Error" in response.body:
+            raise ApiResponseError(response.body["Error"])
 
     async def get_backup(self, backup_id: str) -> BackupDefinition:
         """Get the information of a backup by ID."""
@@ -82,12 +79,16 @@ class DuplicatiBackendAPI(RestApiInterface):
 
         try:
             response = await self.get(f"api/v1/backup/{backup_id}")
-            return BackupDefinition.from_dict(response.body)
-        except Exception as error:  # noqa: BLE001
-            await self.__handle_api_error(error, f"api/v1/backup/{backup_id}")
+            self.__handle_api_response_error(response)
+        except (ValueError, ApiResponseError) as e:
+            _LOGGER.debug(
+                "Getting the information of backup with ID '%s' failed: %s",
+                backup_id,
+                str(e),
+            )
             raise
         else:
-            return response.body
+            return BackupDefinition.from_dict(response.body)
 
     async def create_backup(self, backup_id: str) -> dict:
         """Create a new backup by ID."""
@@ -100,10 +101,19 @@ class DuplicatiBackendAPI(RestApiInterface):
 
         try:
             response = await self.post(f"api/v1/backup/{backup_id}/run")
-        except Exception as error:  # noqa: BLE001
-            await self.__handle_api_error(error, f"api/v1/backup/{backup_id}/run")
+            self.__handle_api_response_error(response)
+        except (ValueError, RuntimeError, ApiResponseError) as e:
+            _LOGGER.debug(
+                "Starting the backup process for backup with ID '%s' failed: %s",
+                backup_id,
+                str(e),
+            )
             raise
         else:
+            _LOGGER.debug(
+                "Request to start backup process for backup with ID '%s' sent to Duplicati backend",
+                backup_id,
+            )
             return response.body
 
     async def update_backup(self, backup_id: str, data: dict) -> dict:
@@ -115,8 +125,13 @@ class DuplicatiBackendAPI(RestApiInterface):
 
         try:
             response = await self.put(f"api/v1/backup/{backup_id}", data)
-        except Exception as error:  # noqa: BLE001
-            await self.__handle_api_error(error, f"api/v1/backup/{backup_id}")
+            self.__handle_api_response_error(response)
+        except (ValueError, ApiResponseError) as e:
+            _LOGGER.debug(
+                "Updating the configuration for backup with ID '%s' failed: %s",
+                backup_id,
+                str(e),
+            )
             raise
         else:
             return response.body
@@ -128,8 +143,13 @@ class DuplicatiBackendAPI(RestApiInterface):
 
         try:
             response = await self.delete(f"api/v1/backup/{backup_id}")
-        except Exception as error:  # noqa: BLE001
-            await self.__handle_api_error(error, f"api/v1/backup/{backup_id}")
+            self.__handle_api_response_error(response)
+        except (ValueError, ApiResponseError) as e:
+            _LOGGER.debug(
+                "Deleting the configuration of backup with ID '%s' failed: %s",
+                backup_id,
+                str(e),
+            )
             raise
         else:
             return response.body
@@ -138,26 +158,32 @@ class DuplicatiBackendAPI(RestApiInterface):
         """Get a list of all backups."""
         try:
             response = await self.get("api/v1/backups")
+            self.__handle_api_response_error(response)
             return [BackupDefinition.from_dict(backup) for backup in response.body]
-        except Exception as error:  # noqa: BLE001
-            await self.__handle_api_error(error, "api/v1/backups")
+        except ApiResponseError as e:
+            _LOGGER.debug("Listing the configured backups failed: %s", str(e))
             raise
 
     async def get_progress_state(self) -> BackupProgress:
         """Get the current progress state of the backup process."""
         try:
             response = await self.get("api/v1/progressstate")
+            self.__handle_api_response_error(response)
             return BackupProgress.from_dict(response.body)
-        except Exception as error:  # noqa: BLE001
-            await self.__handle_api_error(error, "api/v1/progressstate")
+        except ApiResponseError as e:
+            _LOGGER.debug("Getting the current progress state failed: %s", str(e))
             raise
 
     async def get_system_info(self) -> dict:
         """Get system information."""
         try:
             response = await self.get("api/v1/systeminfo")
-        except Exception as error:  # noqa: BLE001
-            await self.__handle_api_error(error, "api/v1/systeminfo")
+            self.__handle_api_response_error(response)
+        except ApiResponseError as e:
+            _LOGGER.debug(
+                "Getting the system information of the Duplicati backend server failed: %s",
+                str(e),
+            )
             raise
         else:
             return response.body

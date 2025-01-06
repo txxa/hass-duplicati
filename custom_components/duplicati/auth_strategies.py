@@ -13,7 +13,7 @@ import aiohttp
 import jwt
 from homeassistant.util import dt as dt_util
 
-from .api import ApiResponseError, InvalidAuth
+from .api import ApiResponseError
 from .auth_interface import DuplicatiAuthStrategy
 from .http_client import HttpClient, HttpResponse
 
@@ -83,35 +83,7 @@ class CookieAuthStrategy(DuplicatiAuthStrategy):
         )
 
         # Handle login errors
-        if login_response.status == HTTPStatus.UNAUTHORIZED.value:
-            _LOGGER.error(
-                "Login - Authentication on server '%s' failed: Incorrect password provided",
-                server,
-            )
-            raise InvalidAuth("Incorrect password provided")
-        if login_response.status != HTTPStatus.OK.value:
-            _LOGGER.error(
-                "Login - Unknown error occurred during login (code=%s, reason=%s, method=%s, url=%s)",
-                login_response.status,
-                login_response.reason,
-                HTTPMethod.POST,
-                url,
-            )
-            request_info = aiohttp.RequestInfo(
-                method=login_response.request_info["method"],
-                url=login_response.request_info["url"],
-                headers=HttpResponse.convert_headers(
-                    login_response.request_info["headers"]
-                ),
-                real_url=login_response.request_info["real_url"],
-            )
-            raise aiohttp.ClientResponseError(
-                request_info=request_info,
-                history=login_response.history,
-                status=login_response.status,
-                message="Unknown error occurred during login",
-                headers=login_response.headers,
-            )
+        self.handle_login_errors(login_response, server, url)
 
         _LOGGER.debug(
             "Login - Cookie authentication with nonced and salted password successful"
@@ -224,36 +196,9 @@ class JWTAuthStrategy(DuplicatiAuthStrategy):
         )
 
         # Handle login errors
-        if login_response.status == HTTPStatus.UNAUTHORIZED.value:
-            _LOGGER.error(
-                "Login - Authentication on server '%s' failed: Incorrect password provided",
-                server,
-            )
-            raise InvalidAuth("Incorrect password provided")
-        if login_response.status != HTTPStatus.OK.value:
-            _LOGGER.error(
-                "Login - Unknown error occurred during login (code=%s, reason=%s, method=%s, url=%s)",
-                login_response.status,
-                login_response.reason,
-                HTTPMethod.POST,
-                url,
-            )
-            request_info = aiohttp.RequestInfo(
-                method=login_response.request_info["method"],
-                url=login_response.request_info["url"],
-                headers=HttpResponse.convert_headers(
-                    login_response.request_info["headers"]
-                ),
-                real_url=login_response.request_info["real_url"],
-            )
-            raise aiohttp.ClientResponseError(
-                request_info=request_info,
-                history=login_response.history,
-                status=login_response.status,
-                message="Unknown error occurred during login",
-                headers=login_response.headers,
-            )
+        self.handle_login_errors(login_response, server, url)
 
+        # Extract access token
         access_token = login_response.body.get("AccessToken")
         if not access_token:
             _LOGGER.error("Login - Failed to extract the access token")
