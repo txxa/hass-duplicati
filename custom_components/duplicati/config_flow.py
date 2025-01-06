@@ -26,7 +26,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import ApiResponseError, DuplicatiBackendAPI, InvalidAuth
-from .auth_strategies import CookieAuthStrategy
+from .auth_strategies import JWTAuthStrategy
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .flow_base import BackupsError, DuplicatiFlowHandlerBase
 from .http_client import CannotConnect, HttpClient
@@ -62,7 +62,7 @@ class DuplicatiConfigFlowHandler(ConfigFlow, DuplicatiFlowHandlerBase, domain=DO
         # Create http client
         http_client = HttpClient(verify_ssl)
         # Create auth strategy
-        auth_strategy = CookieAuthStrategy(url, verify_ssl, http_client=http_client)
+        auth_strategy = JWTAuthStrategy(url, verify_ssl, http_client=http_client)
         # Create API instance
         return DuplicatiBackendAPI(
             url, verify_ssl, password, auth_strategy, http_client

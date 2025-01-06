@@ -18,12 +18,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import async_get_platforms
 
-from custom_components.duplicati.http_client import HttpClient
-
 from .api import DuplicatiBackendAPI
-from .auth_strategies import CookieAuthStrategy
+from .auth_strategies import JWTAuthStrategy
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN, METRIC_LAST_STATUS
 from .coordinator import DuplicatiDataUpdateCoordinator
+from .http_client import HttpClient
 from .manager import DuplicatiEntityManager
 from .service import DuplicatiService, async_setup_services, async_unload_services
 
@@ -40,7 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Create http client
         http_client = HttpClient(entry.data[CONF_VERIFY_SSL])
         # Create auth strategy
-        auth_strategy = CookieAuthStrategy(
+        auth_strategy = JWTAuthStrategy(
             entry.data[CONF_URL], entry.data[CONF_VERIFY_SSL], http_client=http_client
         )
         # Create API instance
