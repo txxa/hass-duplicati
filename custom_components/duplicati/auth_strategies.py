@@ -1,12 +1,16 @@
 """Authentication strategies for Duplicati backend."""
 
 import base64
+import binascii
 import hashlib
+import json
 import logging
 import urllib.parse
 from http import HTTPMethod, HTTPStatus
+from typing import Any
 
 import aiohttp
+import jwt
 from homeassistant.util import dt as dt_util
 
 from .api import ApiResponseError, InvalidAuth
@@ -181,3 +185,152 @@ class CookieAuthStrategy(DuplicatiAuthStrategy):
             and session_auth.expires
             and session_auth.expires > now
         )
+
+
+class JWTAuthStrategy(DuplicatiAuthStrategy):
+    """Authentication strategy using JSON Web Tokens."""
+
+    def __init__(
+        self,
+        base_url: str,
+        verify_ssl: bool = False,
+        timeout: int = 30,
+        http_client: HttpClient | None = None,
+    ):
+        """Initialize the JWTAuthStrategy."""
+        self.base_url = base_url
+        self.verify_ssl = verify_ssl
+        if http_client:
+            self.http_client = http_client
+        else:
+            self.http_client = HttpClient(verify_ssl, timeout)
+        self.access_token = None
+
+    async def authenticate(self, password: str) -> None:
+        """Login to Duplicati using JWT authentication."""
+        _LOGGER.debug("Login - Initiating JWT authentication")
+
+        url = f"{self.base_url}/api/v1/auth/login"
+        data = {"Password": password}
+        server = urllib.parse.urlparse(url).netloc
+
+        # Get access token
+        _LOGGER.debug("Login - Sending login request to get access token")
+        login_response = await self.http_client.make_request(
+            HTTPMethod.POST,
+            url,
+            data=data,
+            content_type=HttpClient.CONTENT_TYPE_JSON,
+        )
+
+        # Handle login errors
+        if login_response.status == HTTPStatus.UNAUTHORIZED.value:
+            _LOGGER.error(
+                "Login - Authentication on server '%s' failed: Incorrect password provided",
+                server,
+            )
+            raise InvalidAuth("Incorrect password provided")
+        if login_response.status != HTTPStatus.OK.value:
+            _LOGGER.error(
+                "Login - Unknown error occurred during login (code=%s, reason=%s, method=%s, url=%s)",
+                login_response.status,
+                login_response.reason,
+                HTTPMethod.POST,
+                url,
+            )
+            request_info = aiohttp.RequestInfo(
+                method=login_response.request_info["method"],
+                url=login_response.request_info["url"],
+                headers=HttpResponse.convert_headers(
+                    login_response.request_info["headers"]
+                ),
+                real_url=login_response.request_info["real_url"],
+            )
+            raise aiohttp.ClientResponseError(
+                request_info=request_info,
+                history=login_response.history,
+                status=login_response.status,
+                message="Unknown error occurred during login",
+                headers=login_response.headers,
+            )
+
+        access_token = login_response.body.get("AccessToken")
+        if not access_token:
+            _LOGGER.error("Login - Failed to extract the access token")
+            raise ValueError("Failed to extract the access token")
+        self.access_token = access_token
+        _LOGGER.debug("Login - Access token successfully extracted: %s", access_token)
+        _LOGGER.debug("Login - JWT authentication successful")
+
+    def get_auth_headers(self) -> dict:
+        """Get headers needed for authenticated requests."""
+        return (
+            {"Authorization": f"Bearer {self.access_token}"}
+            if self.access_token
+            else {}
+        )
+
+    def is_auth_valid(self) -> bool:
+        """Check if current JWT auth is still valid."""
+        if not self.access_token:
+            _LOGGER.debug("JWT validation - No access token available")
+            return False
+
+        try:
+            _LOGGER.debug("JWT validation - Parsing JWT token")
+            decoded = self.__parse_jwt(self.access_token)
+            payload = json.loads(decoded["payload"])
+
+            if not isinstance(payload, dict):
+                _LOGGER.debug("JWT validation - Invalid payload format")
+                raise jwt.DecodeError("Invalid payload string: must be a json object")
+            if "exp" not in payload:
+                _LOGGER.debug("JWT validation - No expiration claim found in token")
+                raise jwt.MissingRequiredClaimError("exp")
+
+            now = dt_util.utcnow().timestamp()
+            exp = int(payload["exp"])
+            is_valid = exp > now
+            _LOGGER.debug(
+                "JWT validation - Token expiration check: %s",
+                "valid" if is_valid else "expired",
+            )
+
+        except (ValueError, jwt.InvalidTokenError) as e:
+            _LOGGER.debug("JWT validation - Token validation failed: %s", str(e))
+            return False
+        else:
+            return is_valid
+
+    def __parse_jwt(self, token: str | bytes) -> dict[str, Any]:
+        """Parse and validate JWT token structure."""
+        if isinstance(token, str):
+            token = token.encode("utf-8")
+
+        if not isinstance(token, bytes):
+            raise jwt.DecodeError(f"Invalid token type. Token must be a {bytes}")
+
+        try:
+            signing_input, crypto_segment = token.rsplit(b".", 1)
+            header_segment, payload_segment = signing_input.split(b".", 1)
+        except ValueError as err:
+            raise jwt.DecodeError("Not enough segments") from err
+
+        try:
+            decoded_token = jwt.api_jws.decode_complete(
+                token, options={"verify_signature": False}
+            )
+            header = decoded_token["header"]
+            payload = decoded_token["payload"]
+            signature = decoded_token["signature"]
+        except (TypeError, binascii.Error) as err:
+            raise jwt.DecodeError("Invalid token format") from err
+
+        if not isinstance(header, dict):
+            raise jwt.DecodeError("Invalid header string: must be a json object")
+
+        return {
+            "payload": payload,
+            "header": header,
+            "signature": signature,
+        }
