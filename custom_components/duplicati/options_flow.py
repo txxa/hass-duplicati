@@ -17,7 +17,8 @@ from homeassistant.helpers.selector import (
     selector,
 )
 
-from .api import ApiResponseError, DuplicatiBackendAPI, InvalidAuth
+from .api import ApiResponseError, DuplicatiBackendAPI
+from .auth_interface import InvalidAuth
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .flow_base import BackupsError, DuplicatiFlowHandlerBase
 from .http_client import CannotConnect
