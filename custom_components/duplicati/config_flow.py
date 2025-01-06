@@ -25,9 +25,11 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 
-from .api import ApiResponseError, CannotConnect, DuplicatiBackendAPI, InvalidAuth
+from .api import ApiResponseError, DuplicatiBackendAPI, InvalidAuth
+from .auth_strategies import CookieAuthStrategy
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .flow_base import BackupsError, DuplicatiFlowHandlerBase
+from .http_client import CannotConnect, HttpClient
 from .options_flow import DuplicatiOptionsFlowHandler
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,7 +38,7 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_URL): str,
-        vol.Optional(CONF_PASSWORD): str,
+        vol.Required(CONF_PASSWORD): str,
         vol.Optional(CONF_VERIFY_SSL, default=vol.Coerce(bool)(False)): bool,
     }
 )
@@ -45,26 +47,37 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 class DuplicatiConfigFlowHandler(ConfigFlow, DuplicatiFlowHandlerBase, domain=DOMAIN):
     """Handle the config flow for Duplicati."""
 
-    VERSION = 2
+    VERSION = 3
     title: str
     data: dict[str, Any]
 
     def __create_api(
-        self, url: str, verify_ssl: bool, password: str | None
+        self,
+        url: str,
+        verify_ssl: bool,
+        password: str,
     ) -> DuplicatiBackendAPI:
         """Create an instance of DuplicatiBackendAPI."""
-        return DuplicatiBackendAPI(url, verify_ssl, password)
+
+        # Create http client
+        http_client = HttpClient(verify_ssl)
+        # Create auth strategy
+        auth_strategy = CookieAuthStrategy(url, verify_ssl, http_client=http_client)
+        # Create API instance
+        return DuplicatiBackendAPI(
+            url, verify_ssl, password, auth_strategy, http_client
+        )
 
     async def __async_validate_user_step_input(self, data: dict[str, Any]) -> tuple:
         """Process user input and create new or update existing config entry."""
         try:
             base_url = data[CONF_URL]
-            password = data.get(CONF_PASSWORD)
+            password = data[CONF_PASSWORD]
             verify_ssl = data[CONF_VERIFY_SSL]
             # Create API instance
             self.api = self.__create_api(base_url, verify_ssl, password)
             # Get the list of available backups
-            backups = await self.api.list_backups()
+            backups = await self.api.get_backups()
             # Check if backups are available
             self._validate_backup_definitions(backups)
             # Define scan interval
