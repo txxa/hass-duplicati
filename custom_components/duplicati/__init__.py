@@ -269,7 +269,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         device_registry.async_update_device(
                             device_id=device.id,
                             name=backup_name,
-                            add_config_entry=entry,
+                            add_config_entry_id=entry.entry_id,
                             remove_config_entry_id=config_entry.entry_id,
                         )
                         # Collect old entries (with same URL but different backup ID) for removal
