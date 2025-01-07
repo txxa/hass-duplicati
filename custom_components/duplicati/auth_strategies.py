@@ -124,7 +124,7 @@ class CookieAuthStrategy(DuplicatiAuthStrategy):
                     history=response.history,
                     status=response.status,
                     message="Failed to retrieve XSRF token",
-                    headers=response.headers,
+                    headers=HttpResponse.convert_headers(response.headers),
                 )
 
         xsrf_token = self.http_client.cookie_manager.stored_cookies.get("xsrf-token")

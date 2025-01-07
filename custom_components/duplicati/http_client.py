@@ -381,7 +381,7 @@ class HttpClient:
                 url=url,
                 headers=headers,
                 data=data,
-                verify_ssl=self.verify_ssl,
+                ssl=self.verify_ssl,
                 allow_redirects=False,
             ) as response:
                 # Handle response

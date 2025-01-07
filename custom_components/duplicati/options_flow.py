@@ -5,11 +5,10 @@ from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, OptionsFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlowResult, OptionsFlow
 from homeassistant.const import (
     CONF_SCAN_INTERVAL,
 )
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
@@ -82,7 +81,7 @@ class DuplicatiOptionsFlowHandler(OptionsFlow, DuplicatiFlowHandlerBase):
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Manage the options."""
         try:
             errors: dict[str, str] = {}
