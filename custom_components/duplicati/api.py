@@ -8,13 +8,13 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .auth_interface import DuplicatiAuthStrategy
 from .http_client import HttpClient, HttpResponse
-from .model import BackupDefinition, BackupProgress
+from .model import ApiError, ApiResponse, BackupDefinition, BackupProgress
 from .rest_interface import RestApiInterface
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class ApiResponseError(HomeAssistantError):
+class ApiProcessingError(HomeAssistantError):
     """Error to indicate a processing error during an API request."""
 
 
@@ -65,22 +65,42 @@ class DuplicatiBackendAPI(RestApiInterface):
         if self.http_client and auth_headers:
             self.http_client.add_headers(auth_headers)
 
-    def __handle_api_response_error(self, response: HttpResponse) -> None:
+    def __handle_api_response_error(self, response: HttpResponse) -> ApiResponse | None:
         """Handle API specific errors."""
         if not response.body:
-            raise ApiResponseError("No response body")
+            raise ApiProcessingError("No response body")
         if "Error" in response.body:
-            raise ApiResponseError(response.body["Error"])
+            return ApiResponse(success=False, data=ApiError.from_dict(response.body))
 
-    async def get_backup(self, backup_id: str) -> BackupDefinition:
+    async def is_backup_running(self) -> bool:
+        """Check if a backup process is currently running."""
+        response = await self.get_progress_state()
+
+        if isinstance(response.data, ApiError):
+            message = response.data.msg
+        elif isinstance(response.data, BackupProgress):
+            message = response.data.phase
+        else:
+            raise ApiProcessingError("Unknown progress state")
+
+        return message not in {
+            "No active backup",
+            "Backup_Complete",
+            "Error",
+            "",
+        }
+
+    async def get_backup(self, backup_id: str) -> ApiResponse:
         """Get the information of a backup by ID."""
-        if not self.validate_backup_id(backup_id):
-            raise ValueError("Invalid backup ID format")
-
         try:
+            if not self.validate_backup_id(backup_id):
+                raise ValueError("Invalid backup ID format")
             response = await self.get(f"api/v1/backup/{backup_id}")
             self.__handle_api_response_error(response)
-        except (ValueError, ApiResponseError) as e:
+            api_response = ApiResponse(
+                success=True, data=BackupDefinition.from_dict(response.body)
+            )
+        except (ValueError, ApiProcessingError) as e:
             _LOGGER.debug(
                 "Getting the information of backup with ID '%s' failed: %s",
                 backup_id,
@@ -88,21 +108,19 @@ class DuplicatiBackendAPI(RestApiInterface):
             )
             raise
         else:
-            return BackupDefinition.from_dict(response.body)
+            return api_response
 
-    async def create_backup(self, backup_id: str) -> dict:
+    async def create_backup(self, backup_id: str) -> ApiResponse:
         """Create a new backup by ID."""
-        if not self.validate_backup_id(backup_id):
-            raise ValueError("Invalid backup ID format")
-
-        progress_state = await self.get_progress_state()
-        if progress_state.phase not in {"No active backup", "Backup_Complete", "Error"}:
-            raise RuntimeError("The backup process is currently already running")
-
         try:
+            if not self.validate_backup_id(backup_id):
+                raise ValueError("Invalid backup ID format")
+            if await self.is_backup_running():
+                raise RuntimeError("The backup process is currently already running")
             response = await self.post(f"api/v1/backup/{backup_id}/run")
             self.__handle_api_response_error(response)
-        except (ValueError, RuntimeError, ApiResponseError) as e:
+            api_response = ApiResponse(success=True, data=response.body)
+        except (ValueError, RuntimeError, ApiProcessingError) as e:
             _LOGGER.debug(
                 "Starting the backup process for backup with ID '%s' failed: %s",
                 backup_id,
@@ -114,19 +132,19 @@ class DuplicatiBackendAPI(RestApiInterface):
                 "Request to start backup process for backup with ID '%s' sent to Duplicati backend",
                 backup_id,
             )
-            return response.body
+            return api_response
 
-    async def update_backup(self, backup_id: str, data: dict) -> dict:
+    async def update_backup(self, backup_id: str, data: dict) -> ApiResponse:
         """Update the configuration of a backup by ID."""
-        if not self.validate_backup_id(backup_id):
-            raise ValueError("Invalid backup ID format")
-        if not data:
-            raise ValueError("No data provided for the update")
-
         try:
+            if not self.validate_backup_id(backup_id):
+                raise ValueError("Invalid backup ID format")
+            if not data:
+                raise ValueError("No data provided for the update")
             response = await self.put(f"api/v1/backup/{backup_id}", data)
             self.__handle_api_response_error(response)
-        except (ValueError, ApiResponseError) as e:
+            api_response = ApiResponse(success=True, data=response.body)
+        except (ValueError, ApiProcessingError) as e:
             _LOGGER.debug(
                 "Updating the configuration for backup with ID '%s' failed: %s",
                 backup_id,
@@ -134,17 +152,17 @@ class DuplicatiBackendAPI(RestApiInterface):
             )
             raise
         else:
-            return response.body
+            return api_response
 
-    async def delete_backup(self, backup_id: str) -> dict:
+    async def delete_backup(self, backup_id: str) -> ApiResponse:
         """Delete the configuration of a backup by ID."""
-        if not self.validate_backup_id(backup_id):
-            raise ValueError("Invalid backup ID format")
-
         try:
+            if not self.validate_backup_id(backup_id):
+                raise ValueError("Invalid backup ID format")
             response = await self.delete(f"api/v1/backup/{backup_id}")
             self.__handle_api_response_error(response)
-        except (ValueError, ApiResponseError) as e:
+            api_response = ApiResponse(success=True, data=response.body)
+        except (ValueError, ApiProcessingError) as e:
             _LOGGER.debug(
                 "Deleting the configuration of backup with ID '%s' failed: %s",
                 backup_id,
@@ -152,38 +170,48 @@ class DuplicatiBackendAPI(RestApiInterface):
             )
             raise
         else:
-            return response.body
+            return api_response
 
-    async def get_backups(self) -> list[BackupDefinition]:
+    async def get_backups(self) -> ApiResponse:
         """Get a list of all backups."""
         try:
             response = await self.get("api/v1/backups")
             self.__handle_api_response_error(response)
-            return [BackupDefinition.from_dict(backup) for backup in response.body]
-        except ApiResponseError as e:
+            api_response = ApiResponse(
+                success=True,
+                data=[BackupDefinition.from_dict(backup) for backup in response.body],
+            )
+        except ApiProcessingError as e:
             _LOGGER.debug("Listing the configured backups failed: %s", str(e))
             raise
+        else:
+            return api_response
 
-    async def get_progress_state(self) -> BackupProgress:
+    async def get_progress_state(self) -> ApiResponse:
         """Get the current progress state of the backup process."""
         try:
             response = await self.get("api/v1/progressstate")
             self.__handle_api_response_error(response)
-            return BackupProgress.from_dict(response.body)
-        except ApiResponseError as e:
+            api_response = ApiResponse(
+                success=True, data=BackupProgress.from_dict(response.body)
+            )
+        except ApiProcessingError as e:
             _LOGGER.debug("Getting the current progress state failed: %s", str(e))
             raise
+        else:
+            return api_response
 
-    async def get_system_info(self) -> dict:
+    async def get_system_info(self) -> ApiResponse:
         """Get system information."""
         try:
             response = await self.get("api/v1/systeminfo")
             self.__handle_api_response_error(response)
-        except ApiResponseError as e:
+            api_response = ApiResponse(success=True, data=response.body)
+        except ApiProcessingError as e:
             _LOGGER.debug(
                 "Getting the system information of the Duplicati backend server failed: %s",
                 str(e),
             )
             raise
         else:
-            return response.body
+            return api_response

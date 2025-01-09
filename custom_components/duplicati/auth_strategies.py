@@ -13,7 +13,7 @@ import aiohttp
 import jwt
 from homeassistant.util import dt as dt_util
 
-from .api import ApiResponseError
+from .api import ApiProcessingError
 from .auth_interface import DuplicatiAuthStrategy
 from .http_client import HttpClient, HttpResponse
 
@@ -62,7 +62,7 @@ class CookieAuthStrategy(DuplicatiAuthStrategy):
         _LOGGER.debug("Login - Nonce and salt successfully retrieved")
         if nonce_response.status != HTTPStatus.OK.value:
             _LOGGER.error("Login - Failed to retrieve nonce and salt")
-            raise ApiResponseError("Failed to retrieve nonce and salt")
+            raise ApiProcessingError("Failed to retrieve nonce and salt")
 
         # Step 3: Calculate the salted and nonced password
         _LOGGER.debug("Login - Calculating salted and nonced password")

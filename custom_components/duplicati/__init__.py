@@ -18,6 +18,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_platform import async_get_platforms
 
+from custom_components.duplicati.model import ApiError
+
 from .api import DuplicatiBackendAPI
 from .auth_strategies import JWTAuthStrategy
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN, METRIC_LAST_STATUS
@@ -70,10 +72,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return False
 
         # Get version info
-        sysinfo_resp = await api.get_system_info()
+        response = await api.get_system_info()
+        if isinstance(response.data, ApiError):
+            _LOGGER.error("Failed to get system info from Duplicati server.")
+            return False
         version_info = {
-            "server": sysinfo_resp.get("ServerVersion", "Unknown"),
-            "api": sysinfo_resp.get("APIVersion", "Unknown"),
+            "server": response.data.get("ServerVersion", "Unknown"),
+            "api": response.data.get("APIVersion", "Unknown"),
         }
 
         # Create a service for managing Duplicati operations
