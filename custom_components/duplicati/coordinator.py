@@ -57,10 +57,12 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
                 self.api.get_api_host(),
             )
             # Get backup definition
-            backup_definition = await self.api.get_backup(self.backup_id)
+            response = await self.api.get_backup(self.backup_id)
+            if not isinstance(response.data, BackupDefinition):
+                raise UpdateFailed(f"Invalid response from API: {response}")
 
             # Process metrics for sensors and return sensor data
-            return self._process_data(backup_definition)
+            return self._process_data(response.data)
         except Exception as e:  # noqa: BLE001
             self.last_exception_message = str(e)
             raise UpdateFailed(str(e)) from e

@@ -6,10 +6,11 @@ import logging
 from homeassistant.components.persistent_notification import async_create
 from homeassistant.core import HomeAssistant, ServiceCall
 
-from .api import ApiResponseError, DuplicatiBackendAPI
+from .api import ApiProcessingError, DuplicatiBackendAPI
 from .const import DOMAIN
 from .coordinator import DuplicatiDataUpdateCoordinator
 from .event import BACKUP_COMPLETED, BACKUP_FAILED, BACKUP_STARTED, SENSORS_REFRESHED
+from .model import ApiError, BackupDefinition, BackupProgress
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,26 +74,40 @@ class DuplicatiService:
         """Wait for the backup process to complete and fire an event."""
         while True:
             # Check the backup progress state
-            progress = await self.api.get_progress_state()
+            progress_state = await self.api.get_progress_state()
+            if not isinstance(progress_state.data, BackupProgress):
+                raise DuplicatiServiceException("Invalid response from API")
 
             # Check if the backup process has failed
-            if progress.backup_id == backup_id and progress.phase == "Error":
+            if (
+                progress_state.data.backup_id == backup_id
+                and progress_state.data.phase == "Error"
+            ):
                 error_message = "Error while creating backup"
                 backup_definition = await self.api.get_backup(backup_id)
-                if backup_definition.backup.metadata.last_error_message:
-                    error_message = backup_definition.backup.metadata.last_error_message
+                if not isinstance(backup_definition.data, BackupDefinition):
+                    raise DuplicatiServiceException("Invalid response from API")
+                if backup_definition.data.backup.metadata.last_error_message:
+                    error_message = (
+                        backup_definition.data.backup.metadata.last_error_message
+                    )
                 if error_message == "No route to host":
-                    error_message += f" '{backup_definition.backup.target_url.host}'"
+                    error_message += (
+                        f" '{backup_definition.data.backup.target_url.host}'"
+                    )
                 raise DuplicatiServiceException(error_message)
 
             # Check if the backup process has finished
-            if progress.backup_id == backup_id and progress.phase == "Backup_Complete":
+            if (
+                progress_state.data.backup_id == backup_id
+                and progress_state.data.phase == "Backup_Complete"
+            ):
                 break
             _LOGGER.debug(
                 "Backup creation for backup with ID '%s' of server '%s' in progress: %s%%",
                 backup_id,
                 self.api.get_api_host(),
-                progress.overall_progress,
+                progress_state.data.overall_progress,
             )
 
             # Wait for 1 second before checking the backup progress state again
@@ -133,17 +148,20 @@ class DuplicatiService:
 
             # Start the backup process
             response = await self.api.create_backup(backup_id)
+
             # Check if response is valid
             if response is None:
-                raise ApiResponseError("No API response received")
+                raise ApiProcessingError("No API response received")
             _LOGGER.debug("Backup creation response: %s", response)
+
             # Check if the backup process has been started
-            if "Error" in response:
-                raise ApiResponseError(response["Error"])
-            if "Status" not in response:
-                raise ApiResponseError("No status received in API response")
-            if response["Status"] != "OK":
-                raise ApiResponseError("Unable to start the backup process")
+            if isinstance(response.data, ApiError):
+                raise ApiProcessingError(response.data.msg)
+            if "Status" not in response.data:
+                raise ApiProcessingError("No status received in API response")
+            if response.data["Status"] != "OK":
+                raise ApiProcessingError("Unable to start the backup process")
+
             # Fire an event to notify that the backup process has started
             self.hass.bus.async_fire(
                 BACKUP_STARTED,

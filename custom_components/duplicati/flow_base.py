@@ -5,8 +5,8 @@ from homeassistant.helpers.selector import (
     SelectOptionDict,
 )
 
-from .api import DuplicatiBackendAPI
-from .model import BackupDefinition
+from .api import ApiProcessingError, DuplicatiBackendAPI
+from .model import ApiError, ApiResponse, BackupDefinition
 
 
 class DuplicatiFlowHandlerBase:
@@ -15,13 +15,20 @@ class DuplicatiFlowHandlerBase:
     api: DuplicatiBackendAPI
 
     def _validate_backup_definitions(
-        self, backup_definitions: list[BackupDefinition]
-    ) -> None:
+        self, response: ApiResponse
+    ) -> list[BackupDefinition]:
         """Validate backups."""
-        if len(backup_definitions) == 0:
+        if isinstance(response.data, ApiError):
+            raise ApiProcessingError(response.data.msg)
+        if not isinstance(response.data, list) or not isinstance(
+            response.data[0], BackupDefinition
+        ):
+            raise ApiProcessingError(f"Unexpected response from API: {response.data}")
+        if len(response.data) == 0:
             raise BackupsError(
                 f"No backups found for server '{self.api.get_api_host()}'"
             )
+        return response.data
 
     def _get_backup_select_options_list(
         self, backups: dict[str, str]

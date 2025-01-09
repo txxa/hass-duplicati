@@ -25,7 +25,7 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 
-from .api import ApiResponseError, DuplicatiBackendAPI
+from .api import ApiProcessingError, DuplicatiBackendAPI
 from .auth_interface import InvalidAuth
 from .auth_strategies import JWTAuthStrategy
 from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
@@ -59,7 +59,6 @@ class DuplicatiConfigFlowHandler(ConfigFlow, DuplicatiFlowHandlerBase, domain=DO
         password: str,
     ) -> DuplicatiBackendAPI:
         """Create an instance of DuplicatiBackendAPI."""
-
         # Create http client
         http_client = HttpClient(verify_ssl)
         # Create auth strategy
@@ -78,9 +77,9 @@ class DuplicatiConfigFlowHandler(ConfigFlow, DuplicatiFlowHandlerBase, domain=DO
             # Create API instance
             self.api = self.__create_api(base_url, verify_ssl, password)
             # Get the list of available backups
-            backups = await self.api.get_backups()
+            response = await self.api.get_backups()
             # Check if backups are available
-            self._validate_backup_definitions(backups)
+            backup_definitions = self._validate_backup_definitions(response)
             # Define scan interval
             data[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
         except aiohttp.ClientConnectionError as e:
@@ -88,7 +87,7 @@ class DuplicatiConfigFlowHandler(ConfigFlow, DuplicatiFlowHandlerBase, domain=DO
         except aiohttp.ClientError as e:
             raise CannotConnect(str(e)) from e
         else:
-            return (data, backups)
+            return (data, backup_definitions)
 
     def __validate_backups_step_input(self, data: dict[str, Any]) -> dict[str, Any]:
         """Validate user input."""
@@ -128,7 +127,7 @@ class DuplicatiConfigFlowHandler(ConfigFlow, DuplicatiFlowHandlerBase, domain=DO
             except InvalidAuth as e:
                 _LOGGER.error("Authentication failed: %s", str(e))
                 errors["base"] = "invalid_auth"
-            except ApiResponseError as e:
+            except ApiProcessingError as e:
                 _LOGGER.error("API response error: %s", str(e))
                 errors["base"] = "api_response"
             except BackupsError as e:
