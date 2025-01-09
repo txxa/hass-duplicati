@@ -40,9 +40,7 @@ class RestApiInterface(ABC):
         """Perform GET request."""
         await self._ensure_authentication()
         url = self._prepare_url(endpoint)
-        return await self.http_client.make_request(
-            HTTPMethod.GET.value, url, headers=headers
-        )
+        return await self.http_client.make_request(HTTPMethod.GET, url, headers=headers)
 
     async def post(
         self, endpoint: str, headers: dict = {}, data: dict | None = None
@@ -51,7 +49,7 @@ class RestApiInterface(ABC):
         await self._ensure_authentication()
         url = self._prepare_url(endpoint)
         return await self.http_client.make_request(
-            HTTPMethod.POST.value, url, headers=headers, data=data
+            HTTPMethod.POST, url, headers=headers, data=data
         )
 
     async def put(
@@ -61,7 +59,7 @@ class RestApiInterface(ABC):
         await self._ensure_authentication()
         url = self._prepare_url(endpoint)
         return await self.http_client.make_request(
-            HTTPMethod.PUT.value, url, headers=headers, data=data
+            HTTPMethod.PUT, url, headers=headers, data=data
         )
 
     async def patch(
@@ -71,7 +69,7 @@ class RestApiInterface(ABC):
         await self._ensure_authentication()
         url = self._prepare_url(endpoint)
         return await self.http_client.make_request(
-            HTTPMethod.PATCH.value, url, headers=headers, data=data
+            HTTPMethod.PATCH, url, headers=headers, data=data
         )
 
     async def delete(self, endpoint: str, headers: dict = {}) -> HttpResponse:
@@ -79,7 +77,7 @@ class RestApiInterface(ABC):
         await self._ensure_authentication()
         url = self._prepare_url(endpoint)
         return await self.http_client.make_request(
-            HTTPMethod.DELETE.value, url, headers=headers
+            HTTPMethod.DELETE, url, headers=headers
         )
 
     async def head(self, endpoint: str, headers: dict = {}) -> HttpResponse:
@@ -87,7 +85,7 @@ class RestApiInterface(ABC):
         await self._ensure_authentication()
         url = self._prepare_url(endpoint)
         return await self.http_client.make_request(
-            HTTPMethod.HEAD.value, url, headers=headers
+            HTTPMethod.HEAD, url, headers=headers
         )
 
     async def options(self, endpoint: str, headers: dict = {}) -> HttpResponse:
@@ -95,7 +93,7 @@ class RestApiInterface(ABC):
         await self._ensure_authentication()
         url = self._prepare_url(endpoint)
         return await self.http_client.make_request(
-            HTTPMethod.OPTIONS.value, url, headers=headers
+            HTTPMethod.OPTIONS, url, headers=headers
         )
 
     async def trace(self, endpoint: str, headers: dict = {}) -> HttpResponse:
@@ -103,7 +101,7 @@ class RestApiInterface(ABC):
         await self._ensure_authentication()
         url = self._prepare_url(endpoint)
         return await self.http_client.make_request(
-            HTTPMethod.TRACE.value, url, headers=headers
+            HTTPMethod.TRACE, url, headers=headers
         )
 
     async def connect(self, endpoint: str, headers: dict = {}) -> HttpResponse:
@@ -111,5 +109,5 @@ class RestApiInterface(ABC):
         await self._ensure_authentication()
         url = self._prepare_url(endpoint)
         return await self.http_client.make_request(
-            HTTPMethod.CONNECT.value, url, headers=headers
+            HTTPMethod.CONNECT, url, headers=headers
         )
