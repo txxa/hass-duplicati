@@ -13,6 +13,6 @@
   "issue_tracker": "https://github.com/txxa/hass-duplicati/issues",
   "requirements": [],
   "ssdp": [],
-  "version": "0.2.1",
+  "version": "0.3.0",
   "zeroconf": []
 }
