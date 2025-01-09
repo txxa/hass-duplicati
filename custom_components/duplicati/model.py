@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from homeassistant.util import dt as dt_util
@@ -488,3 +489,44 @@ class BackupProgress:
             api_field: getattr(self, field)
             for field, api_field in self.FIELD_MAPPING.items()
         }
+
+
+@dataclass
+class ApiError:
+    """Represents an error response from the Duplicati API."""
+
+    msg: str
+    code: int
+
+    FIELD_MAPPING = {
+        "msg": "Error",
+        "code": "Code",
+    }
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        """Create ApiResponseError instance from API response."""
+        converted_data = {}
+        for cls_field, api_field in cls.FIELD_MAPPING.items():
+            if cls_field == "code":
+                value = data.get(api_field, 0)
+                value = int(value)
+            else:
+                value = data.get(api_field, "")
+            converted_data[cls_field] = value
+        return cls(**converted_data)
+
+    def to_dict(self) -> dict:
+        """Convert ApiResponseError instance to API response format."""
+        return {
+            api_field: getattr(self, field)
+            for field, api_field in self.FIELD_MAPPING.items()
+        }
+
+
+@dataclass
+class ApiResponse:
+    """Represents a response from the Duplicati API."""
+
+    success: bool
+    data: Any | ApiError
