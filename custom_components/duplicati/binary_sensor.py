@@ -53,10 +53,10 @@ def create_binary_sensors(
     host = hass.data[DOMAIN][entry.entry_id]["host"]
     version_info = hass.data[DOMAIN][entry.entry_id]["version_info"]
     url = entry.data[CONF_URL]
-    unique_id = f"{host}/{backup["id"]}"
+    unique_id = f"{host}/{backup['id']}"
 
     device_info = DeviceInfo(
-        name=f"{backup["name"]} Backup",
+        name=f"{backup['name']} Backup",
         model=MODEL,
         manufacturer=MANUFACTURER,
         configuration_url=url,
