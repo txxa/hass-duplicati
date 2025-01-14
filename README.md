@@ -74,8 +74,7 @@ Refer to the compatibility matrix below:
 | Integration | Duplicati               |
 | :---------- | :---------------------- |
 | v0.1.0      | 2.0.7.1_beta_2023-05-25 |
-| v0.2.0      | 2.0.8.1_beta_2024-05-07 |
-| v0.2.1      | 2.0.8.1_beta_2024-05-07 |
+| v0.2.x      | 2.0.8.1_beta_2024-05-07 |
 | v0.3.0      | 2.1.0.2_beta_2024-11-29 |
 
 **Important notes:**
