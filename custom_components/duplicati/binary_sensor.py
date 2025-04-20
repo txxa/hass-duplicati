@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN,
     MANUFACTURER,
+    METRIC_CURRENT_STATUS,
     METRIC_LAST_STATUS,
     MODEL,
 )
@@ -27,6 +28,12 @@ BINARY_SENSORS = {
         icon="mdi:shield-check",
         device_class=BinarySensorDeviceClass.PROBLEM,
         translation_key=METRIC_LAST_STATUS,
+    ),
+    METRIC_CURRENT_STATUS: BinarySensorEntityDescription(
+        key=METRIC_CURRENT_STATUS,
+        icon="mdi:information",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        translation_key=METRIC_CURRENT_STATUS,
     ),
 }
 
