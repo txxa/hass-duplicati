@@ -18,7 +18,7 @@ from homeassistant.helpers.selector import (
 
 from .api import ApiProcessingError, DuplicatiBackendAPI
 from .auth_interface import InvalidAuth
-from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL_SECONDS, DOMAIN
 from .flow_base import BackupsError, DuplicatiFlowHandlerBase
 from .http_client import CannotConnect
 from .manager import DuplicatiEntityManager
@@ -89,7 +89,7 @@ class DuplicatiOptionsFlowHandler(OptionsFlow, DuplicatiFlowHandlerBase):
             # Get currently configured values
             currently_configured_backups = self.config_entry.data.get(CONF_BACKUPS, {})
             currently_configured_scan_interval = self.config_entry.data.get(
-                CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_SECONDS
             )
             # Extract currently configured backup IDs
             currently_configured_backup_ids = list(currently_configured_backups.keys())

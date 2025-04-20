@@ -22,7 +22,12 @@ from custom_components.duplicati.model import ApiError
 
 from .api import DuplicatiBackendAPI
 from .auth_strategies import JWTAuthStrategy
-from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN, METRIC_LAST_STATUS
+from .const import (
+    CONF_BACKUPS,
+    DEFAULT_SCAN_INTERVAL_SECONDS,
+    DOMAIN,
+    METRIC_LAST_STATUS,
+)
 from .coordinator import DuplicatiDataUpdateCoordinator
 from .http_client import HttpClient
 from .manager import DuplicatiEntityManager
@@ -64,7 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 hass,
                 api=api,
                 backup_id=backup_id,
-                update_interval=int(DEFAULT_SCAN_INTERVAL),
+                update_interval=int(DEFAULT_SCAN_INTERVAL_SECONDS),
             )
             coordinators[backup_id] = coordinator
         if len(backups) == 0:
@@ -282,7 +287,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Update entry data
         _LOGGER.debug("Updating entry data with new configuration")
-        data[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
+        data[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL_SECONDS
         data["backups"] = configured_backups
         if CONF_ID in data:
             data.pop(CONF_ID)
