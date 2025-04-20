@@ -28,7 +28,7 @@ from homeassistant.helpers.selector import (
 from .api import ApiProcessingError, DuplicatiBackendAPI
 from .auth_interface import InvalidAuth
 from .auth_strategies import JWTAuthStrategy
-from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import CONF_BACKUPS, DEFAULT_SCAN_INTERVAL_SECONDS, DOMAIN
 from .flow_base import BackupsError, DuplicatiFlowHandlerBase
 from .http_client import CannotConnect, HttpClient
 from .options_flow import DuplicatiOptionsFlowHandler
@@ -81,7 +81,7 @@ class DuplicatiConfigFlowHandler(ConfigFlow, DuplicatiFlowHandlerBase, domain=DO
             # Check if backups are available
             backup_definitions = self._validate_backup_definitions(response)
             # Define scan interval
-            data[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
+            data[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL_SECONDS
         except aiohttp.ClientConnectionError as e:
             raise CannotConnect(str(e)) from e
         except aiohttp.ClientError as e:
