@@ -15,8 +15,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import DuplicatiBackendAPI
 from .const import (
-    BACKUP_MONITORING_INTERVAL_SECONDS,
-    DELAYED_STARTUP_CHECK_SECONDS,
     DOMAIN,
     METRIC_CURRENT_STATUS,
     METRIC_LAST_DURATION,
@@ -27,7 +25,10 @@ from .const import (
     METRIC_LAST_STATUS,
     METRIC_LAST_TARGET_FILES,
     METRIC_LAST_TARGET_SIZE,
-    SCHEDULE_UPDATE_WAIT_SECONDS,
+    MONITORING_DELAYED_STARTUP_CHECK_RETRIES,
+    MONITORING_DELAYED_STARTUP_CHECK_SECONDS,
+    MONITORING_SCAN_INTERVAL_SECONDS,
+    MONITORING_UPDATE_DATA_WAIT_SECONDS,
 )
 from .model import BackupDefinition, BackupProgress
 
@@ -68,7 +69,6 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         self._remove_point_in_time_listener: Callable[[], None] | None = None
         self._remove_interval_listener: Callable[[], None] | None = None
         self._remove_delayed_check: Callable[[], None] | None = None
-        self._regular_update_interval = update_interval
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch and process data from Duplicati API."""
@@ -148,26 +148,64 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         # Start monitoring asynchronously
         self.hass.async_create_task(self._start_backup_monitoring())
 
-    async def _start_backup_monitoring(self) -> None:
-        """Start monitoring a backup that should be running."""
+    async def _start_backup_monitoring(
+        self,
+        retry_count: int = 1,
+        max_retries: int = MONITORING_DELAYED_STARTUP_CHECK_RETRIES,
+    ) -> None:
+        """Start monitoring a backup that should be running.
+
+        Args:
+            retry_count: Current retry attempt count
+            max_retries: Maximum number of retry attempts
+
+        """
         # First check if backup is actually running
         is_running = await self.__is_backup_running(self.backup_id)
 
         if not is_running:
-            _LOGGER.debug("Expected backup to start but it's not running")
-            # Check again in 30 seconds in case it's delayed
+            # Log the current attempt (starting from 1 for better readability)
+            _LOGGER.debug(
+                "Expected backup to start but it's not running (attempt %s of %s)",
+                retry_count,
+                max_retries,
+            )
+
+            # Check if we've reached the maximum number of retries
+            if retry_count >= max_retries:
+                _LOGGER.warning(
+                    "Backup didn't start after %s retries, stopping monitoring attempts for this schedule backup",
+                    max_retries,
+                )
+                # Refresh backup info to get the latest next scheduled backup time
+                try:
+                    _LOGGER.debug("Refreshing backup info to get latest schedule")
+                    updated_data = await self.__get_backup_info(self.backup_id)
+                    updated_data[METRIC_CURRENT_STATUS] = False
+                    self.async_set_updated_data(updated_data)
+                except Exception as e:  # noqa: BLE001
+                    _LOGGER.error(
+                        "Failed to refresh backup info after failed monitoring: %s", e
+                    )
+                return
+
+            # Check again after delay in case it's delayed
             self._cleanup_delayed_check()
 
             @callback
             def delayed_check(_now: datetime) -> None:
                 """Handle delayed check callback."""
                 self._remove_delayed_check = None
-                self.hass.async_create_task(self._start_backup_monitoring())
+                # Pass the incremented retry count
+                self.hass.async_create_task(
+                    self._start_backup_monitoring(retry_count + 1, max_retries)
+                )
 
             self._remove_delayed_check = async_track_point_in_time(
                 self.hass,
                 delayed_check,
-                datetime.now(UTC) + timedelta(seconds=DELAYED_STARTUP_CHECK_SECONDS),
+                datetime.now(UTC)
+                + timedelta(seconds=MONITORING_DELAYED_STARTUP_CHECK_SECONDS),
             )
             return
 
@@ -181,13 +219,11 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         self._remove_interval_listener = async_track_time_interval(
             self.hass,
             self._check_backup_status,
-            timedelta(seconds=BACKUP_MONITORING_INTERVAL_SECONDS),
+            timedelta(seconds=MONITORING_SCAN_INTERVAL_SECONDS),
         )
 
         # Initial status update
-        self.async_set_updated_data(
-            {**(self.data or {}), METRIC_CURRENT_STATUS: "Running"}
-        )
+        self.async_set_updated_data({**(self.data or {}), METRIC_CURRENT_STATUS: True})
 
     @callback
     def _check_backup_status(self, _now: datetime) -> None:
@@ -213,9 +249,9 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
                 # Backup finished, wait a moment for Duplicati to update its schedule
                 _LOGGER.debug(
                     "Backup completed, waiting %s seconds for schedule update",
-                    SCHEDULE_UPDATE_WAIT_SECONDS,
+                    MONITORING_UPDATE_DATA_WAIT_SECONDS,
                 )
-                await asyncio.sleep(SCHEDULE_UPDATE_WAIT_SECONDS)
+                await asyncio.sleep(MONITORING_UPDATE_DATA_WAIT_SECONDS)
                 # Now get final status with updated schedule
                 _LOGGER.debug("Getting final status after waiting")
                 final_data = await self.__get_backup_info(self.backup_id)
