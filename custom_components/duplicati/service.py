@@ -4,13 +4,18 @@ import asyncio
 import logging
 
 from homeassistant.components.persistent_notification import async_create
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 
 from .api import ApiProcessingError, DuplicatiBackendAPI
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    METRIC_CURRENT_STATUS,
+    METRIC_LAST_ERROR_MESSAGE,
+    METRIC_LAST_STATUS,
+)
 from .coordinator import DuplicatiDataUpdateCoordinator
 from .event import BACKUP_COMPLETED, BACKUP_FAILED, BACKUP_STARTED, SENSORS_REFRESHED
-from .model import ApiError, BackupDefinition, BackupProgress
+from .model import ApiError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,47 +76,46 @@ class DuplicatiService:
         self.coordinators = {}
 
     async def __wait_for_backup_completion(self, backup_id):
-        """Wait for the backup process to complete and fire an event."""
-        while True:
-            # Check the backup progress state
-            progress_state = await self.api.get_progress_state()
-            if not isinstance(progress_state.data, BackupProgress):
-                raise DuplicatiServiceException("Invalid response from API")
+        """Wait for backup completion using the coordinator's monitoring capabilities."""
+        # Get the coordinator for this backup
+        coordinator = self.coordinators[backup_id]
 
-            # Check if the backup process has failed
-            if (
-                progress_state.data.backup_id == backup_id
-                and progress_state.data.phase == "Error"
-            ):
-                error_message = "Error while creating backup"
-                backup_definition = await self.api.get_backup(backup_id)
-                if not isinstance(backup_definition.data, BackupDefinition):
-                    raise DuplicatiServiceException("Invalid response from API")
-                if backup_definition.data.backup.metadata.last_error_message:
-                    error_message = (
-                        backup_definition.data.backup.metadata.last_error_message
+        # Set up a one-time listener for backup completion
+        completion_event = asyncio.Event()
+
+        @callback
+        def backup_state_listener():
+            """Handle backup state changes."""
+            # Check if backup is still running
+            if coordinator.data and METRIC_CURRENT_STATUS in coordinator.data:
+                if not coordinator.data[
+                    METRIC_CURRENT_STATUS
+                ]:  # Backup completed or failed
+                    completion_event.set()
+
+        # Register listener for coordinator updates
+        remove_listener = coordinator.async_add_listener(backup_state_listener)
+
+        try:
+            # Wait for backup completion with timeout
+            await asyncio.wait_for(
+                completion_event.wait(), timeout=3600
+            )  # 1 hour timeout
+
+            # Check final status
+            if coordinator.data and METRIC_LAST_STATUS in coordinator.data:
+                if coordinator.data[METRIC_LAST_STATUS]:  # Error status is True
+                    error_message = coordinator.data.get(
+                        METRIC_LAST_ERROR_MESSAGE, "Unknown error"
                     )
-                if error_message == "No route to host":
-                    error_message += (
-                        f" '{backup_definition.data.backup.target_url.host}'"
-                    )
-                raise DuplicatiServiceException(error_message)
-
-            # Check if the backup process has finished
-            if (
-                progress_state.data.backup_id == backup_id
-                and progress_state.data.phase == "Backup_Complete"
-            ):
-                break
-            _LOGGER.debug(
-                "Backup creation for backup with ID '%s' of server '%s' in progress: %s%%",
-                backup_id,
-                self.api.get_api_host(),
-                progress_state.data.overall_progress,
-            )
-
-            # Wait for 1 second before checking the backup progress state again
-            await asyncio.sleep(1)
+                    raise DuplicatiServiceException(error_message)
+        except TimeoutError as e:
+            raise DuplicatiServiceException(
+                "Backup operation timed out after 1 hour"
+            ) from e
+        finally:
+            # Remove the listener to prevent memory leaks
+            remove_listener()
 
     def register_coordinator(self, coordinator: DuplicatiDataUpdateCoordinator):
         """Register a coordinator."""
@@ -171,7 +175,10 @@ class DuplicatiService:
                 },
             )
 
-            # Wait for the backup process to complete
+            # Refresh the sensor data for the backup
+            await self.async_refresh_sensor_data(backup_id)
+
+            # Wait for the backup to complete
             await self.__wait_for_backup_completion(backup_id)
 
             # Handle successful backup creation
@@ -180,6 +187,7 @@ class DuplicatiService:
                 backup_id,
                 self.api.get_api_host(),
             )
+
             # Fire an event to notify that the backup process has finished
             self.hass.bus.async_fire(
                 BACKUP_COMPLETED,
@@ -188,8 +196,7 @@ class DuplicatiService:
                     "backup_id": backup_id,
                 },
             )
-            # Refresh the sensor data for the backup
-            await self.async_refresh_sensor_data(backup_id)
+
         except Exception as e:  # noqa: BLE001
             # Handle failed backup creation
             _LOGGER.error(
@@ -212,6 +219,9 @@ class DuplicatiService:
                 f"Backup creation for backup with ID '{backup_id!s}' of server '{self.api.get_api_host()}' failed: {e!s}",
                 title="Backup creation error",
             )
+        finally:
+            # Refresh the sensor data for the backup
+            await self.async_refresh_sensor_data(backup_id)
 
     async def async_refresh_sensor_data(self, backup_id):
         """Service to manually update data."""
