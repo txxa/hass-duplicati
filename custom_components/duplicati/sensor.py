@@ -22,14 +22,22 @@ from .const import (
     METRIC_LAST_SOURCE_SIZE,
     METRIC_LAST_TARGET_FILES,
     METRIC_LAST_TARGET_SIZE,
+    METRIC_NEXT_EXECUTION,
     MODEL,
-    PROPERTY_NEXT_EXECUTION,
 )
 
 SENSORS = {
+    METRIC_NEXT_EXECUTION: SensorEntityDescription(
+        key=METRIC_NEXT_EXECUTION,
+        icon="mdi:calendar-arrow-right",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        state_class=None,
+        native_unit_of_measurement=None,
+        translation_key=METRIC_NEXT_EXECUTION,
+    ),
     METRIC_LAST_EXECUTION: SensorEntityDescription(
         key=METRIC_LAST_EXECUTION,
-        icon="mdi:calendar-clock",
+        icon="mdi:calendar-arrow-left",
         device_class=SensorDeviceClass.TIMESTAMP,
         state_class=None,
         native_unit_of_measurement=None,
@@ -90,15 +98,6 @@ SENSORS = {
         translation_key=METRIC_LAST_ERROR_MESSAGE,
     ),
 }
-
-
-def get_coordinator_class():
-    """Return the coordinator class."""
-    from custom_components.duplicati.coordinator import (
-        DuplicatiDataUpdateCoordinator,
-    )
-
-    return DuplicatiDataUpdateCoordinator
 
 
 async def async_setup_entry(
@@ -180,15 +179,3 @@ class DuplicatiSensor(CoordinatorEntity, SensorEntity):
         if value is None:
             return None
         return value
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return the state attributes."""
-        # Set the last start time attribute
-        if isinstance(self.coordinator, get_coordinator_class()):
-            if (
-                self.entity_description.key == METRIC_LAST_EXECUTION
-                and self.coordinator.next_backup_execution is not None
-            ):
-                return {PROPERTY_NEXT_EXECUTION: self.coordinator.next_backup_execution}
-            return None
