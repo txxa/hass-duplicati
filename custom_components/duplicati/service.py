@@ -206,7 +206,7 @@ class DuplicatiService:
                     "backup_id": backup_id,
                 },
             )
-        except Exception as e:  # noqa: BLE001$
+        except Exception as e:  # noqa: BLE001
             # Handle failed refresh
             _LOGGER.error(
                 "Sensor data refresh for backup with ID '%s' of server '%s' failed",
