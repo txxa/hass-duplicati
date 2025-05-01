@@ -51,12 +51,7 @@
                 "name": "Chybová zpráva"
             },
             "last_backup_execution": {
-                "name": "Datum",
-                "state_attributes": {
-                    "next_backup_execution": {
-                        "name": "Další spuštění"
-                    }
-                }
+                "name": "Datum"
             },
             "last_backup_source_files_count": {
                 "name": "Souborů k záloze"
@@ -69,6 +64,9 @@
             },
             "last_backup_target_size": {
                 "name": "Velikost zálohy"
+            },
+            "next_backup_execution": {
+                "name": "Další plánované spuštění"
             }
         }
     },

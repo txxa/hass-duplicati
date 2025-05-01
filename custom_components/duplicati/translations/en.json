@@ -51,12 +51,7 @@
                 "name": "Error message"
             },
             "last_backup_execution": {
-                "name": "Date",
-                "state_attributes": {
-                    "next_backup_execution": {
-                        "name": "Next execution"
-                    }
-                }
+                "name": "Date"
             },
             "last_backup_source_files_count": {
                 "name": "Source files"
@@ -69,6 +64,9 @@
             },
             "last_backup_target_size": {
                 "name": "Target size"
+            },
+            "next_backup_execution": {
+                "name": "Next scheduled execution"
             }
         }
     },

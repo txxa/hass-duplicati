@@ -69,7 +69,7 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         self.api = api
         self.backup_id = backup_id
         self.last_exception_message = None
-        self.next_backup_execution: datetime | None = None
+        self._next_backup_execution: datetime | None = None
         self._monitoring_scheduled_for: datetime | None = None
         self._monitoring_state = MonitoringState.IDLE
         self._remove_scheduled_backup_listener: Callable[[], None] | None = None
@@ -113,20 +113,21 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
     async def __manage_future_monitoring(self) -> None:
         """Manage scheduling of future monitoring if needed."""
         # Skip if no next backup execution or if the next execution is in the past
-        if not self.next_backup_execution or self.next_backup_execution <= datetime.now(
-            UTC
+        if (
+            not self._next_backup_execution
+            or self._next_backup_execution <= datetime.now(UTC)
         ):
             return
         # If in SCHEDULED state, check if the scheduled time has changed
         if (
             self._monitoring_state == MonitoringState.SCHEDULED
-            and self._monitoring_scheduled_for != self.next_backup_execution
+            and self._monitoring_scheduled_for != self._next_backup_execution
         ):
             _LOGGER.info(
                 "Detected new backup schedule time while in SCHEDULED state. "
                 "Updating from %s to %s",
                 self._monitoring_scheduled_for,
-                self.next_backup_execution,
+                self._next_backup_execution,
             )
             await self._schedule_future_monitoring()
         # If in IDLE state, schedule normally
@@ -211,8 +212,8 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
 
                 # Schedule next backup if available
                 if (
-                    self.next_backup_execution
-                    and self.next_backup_execution > datetime.now(UTC)
+                    self._next_backup_execution
+                    and self._next_backup_execution > datetime.now(UTC)
                 ):
                     await self._schedule_future_monitoring()
         except Exception as e:  # noqa: BLE001
@@ -236,7 +237,7 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
     async def _schedule_future_monitoring(self) -> None:
         """Schedule monitoring for future backup."""
         # Guard against None value
-        if self.next_backup_execution is None:
+        if self._next_backup_execution is None:
             _LOGGER.warning("Cannot schedule monitoring: no next execution time")
             return
 
@@ -244,11 +245,11 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         if (
             self._monitoring_state == MonitoringState.SCHEDULED
             and self._monitoring_scheduled_for
-            and self._monitoring_scheduled_for == self.next_backup_execution
+            and self._monitoring_scheduled_for == self._next_backup_execution
         ):
             _LOGGER.debug(
                 "Monitoring already scheduled for %s, skipping duplicate scheduling",
-                self.next_backup_execution,
+                self._next_backup_execution,
             )
             return
 
@@ -256,18 +257,18 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         self._cleanup_scheduled_monitoring()
 
         # Store the scheduled time
-        self._monitoring_scheduled_for = self.next_backup_execution
+        self._monitoring_scheduled_for = self._next_backup_execution
 
         _LOGGER.info(
             "Scheduling backup monitoring to start at %s",
-            self.next_backup_execution,
+            self._next_backup_execution,
         )
 
         # Set state to scheduled
         self.__set_monitoring_state(MonitoringState.SCHEDULED)
 
         # Schedule the monitoring
-        start_time = self.next_backup_execution + timedelta(milliseconds=500)
+        start_time = self._next_backup_execution + timedelta(milliseconds=500)
         self._remove_scheduled_backup_listener = async_track_point_in_time(
             self.hass, self._handle_scheduled_time, start_time
         )
@@ -367,7 +368,7 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         # Update with latest state
         self._update_and_notify(backup_state)
         # Try to reschedule if there's a next execution time
-        if self.next_backup_execution and self.next_backup_execution > datetime.now(
+        if self._next_backup_execution and self._next_backup_execution > datetime.now(
             UTC
         ):
             await self._schedule_future_monitoring()
@@ -437,8 +438,9 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
             self.async_set_updated_data(backup_state)
 
             # Reschedule if possible
-            if self.next_backup_execution and self.next_backup_execution > datetime.now(
-                UTC
+            if (
+                self._next_backup_execution
+                and self._next_backup_execution > datetime.now(UTC)
             ):
                 await self._schedule_future_monitoring()
         except Exception as recovery_error:  # noqa: BLE001
@@ -590,9 +592,9 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
                 response.data.backup.metadata.target_files_count
             )
         if response.data.schedule:
-            self.next_backup_execution = response.data.schedule.time
+            self._next_backup_execution = response.data.schedule.time
         # Set the sensor data values
-        sensor_data[METRIC_NEXT_EXECUTION] = self.next_backup_execution
+        sensor_data[METRIC_NEXT_EXECUTION] = self._next_backup_execution
         sensor_data[METRIC_LAST_STATUS] = last_backup_status
         sensor_data[METRIC_LAST_EXECUTION] = last_backup_execution
         sensor_data[METRIC_LAST_DURATION] = last_backup_duration

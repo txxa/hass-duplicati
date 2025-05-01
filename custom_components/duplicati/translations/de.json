@@ -51,12 +51,7 @@
                 "name": "Fehlermeldung"
             },
             "last_backup_execution": {
-                "name": "Datum",
-                "state_attributes": {
-                    "next_backup_execution": {
-                        "name": "Nächste Ausführung"
-                    }
-                }
+                "name": "Datum"
             },
             "last_backup_source_files_count": {
                 "name": "Quelldateien"
@@ -69,6 +64,9 @@
             },
             "last_backup_target_size": {
                 "name": "Zielgrösse"
+            },
+            "next_backup_execution": {
+                "name": "Nächste geplante Ausführung"
             }
         }
     },
