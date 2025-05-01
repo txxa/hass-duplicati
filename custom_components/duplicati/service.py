@@ -1,18 +1,12 @@
 """Definition for Duplicati backup software services."""
 
-import asyncio
 import logging
 
 from homeassistant.components.persistent_notification import async_create
-from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.core import HomeAssistant, ServiceCall
 
 from .api import ApiProcessingError, DuplicatiBackendAPI
-from .const import (
-    DOMAIN,
-    METRIC_CURRENT_STATUS,
-    METRIC_LAST_ERROR_MESSAGE,
-    METRIC_LAST_STATUS,
-)
+from .const import DOMAIN
 from .coordinator import DuplicatiDataUpdateCoordinator
 from .event import BACKUP_COMPLETED, BACKUP_FAILED, BACKUP_STARTED, SENSORS_REFRESHED
 from .model import ApiError
@@ -75,48 +69,6 @@ class DuplicatiService:
         self.api = api
         self.coordinators = {}
 
-    async def __wait_for_backup_completion(self, backup_id):
-        """Wait for backup completion using the coordinator's monitoring capabilities."""
-        # Get the coordinator for this backup
-        coordinator = self.coordinators[backup_id]
-
-        # Set up a one-time listener for backup completion
-        completion_event = asyncio.Event()
-
-        @callback
-        def backup_state_listener():
-            """Handle backup state changes."""
-            # Check if backup is still running
-            if coordinator.data and METRIC_CURRENT_STATUS in coordinator.data:
-                if not coordinator.data[
-                    METRIC_CURRENT_STATUS
-                ]:  # Backup completed or failed
-                    completion_event.set()
-
-        # Register listener for coordinator updates
-        remove_listener = coordinator.async_add_listener(backup_state_listener)
-
-        try:
-            # Wait for backup completion with timeout
-            await asyncio.wait_for(
-                completion_event.wait(), timeout=3600
-            )  # 1 hour timeout
-
-            # Check final status
-            if coordinator.data and METRIC_LAST_STATUS in coordinator.data:
-                if coordinator.data[METRIC_LAST_STATUS]:  # Error status is True
-                    error_message = coordinator.data.get(
-                        METRIC_LAST_ERROR_MESSAGE, "Unknown error"
-                    )
-                    raise DuplicatiServiceException(error_message)
-        except TimeoutError as e:
-            raise DuplicatiServiceException(
-                "Backup operation timed out after 1 hour"
-            ) from e
-        finally:
-            # Remove the listener to prevent memory leaks
-            remove_listener()
-
     def register_coordinator(self, coordinator: DuplicatiDataUpdateCoordinator):
         """Register a coordinator."""
         backup_id = str(coordinator.backup_id)
@@ -139,17 +91,17 @@ class DuplicatiService:
     async def async_create_backup(self, backup_id):
         """Service to start a backup."""
         try:
-            _LOGGER.info(
-                "Backup creation for backup with ID '%s' of server '%s' initiated",
-                backup_id,
-                self.api.get_api_host(),
-            )
-
             # Check if the backup ID is valid
             backup_id = str(backup_id)
             if backup_id not in self.coordinators:
                 raise DuplicatiServiceException("Unknown backup ID provided")
 
+            # Initiate backup creation
+            _LOGGER.info(
+                "Initiate backup creation for backup with ID '%s' of server '%s'",
+                backup_id,
+                self.api.get_api_host(),
+            )
             # Start the backup process
             response = await self.api.create_backup(backup_id)
 
@@ -157,7 +109,6 @@ class DuplicatiService:
             if response is None:
                 raise ApiProcessingError("No API response received")
             _LOGGER.debug("Backup creation response: %s", response)
-
             # Check if the backup process has been started
             if isinstance(response.data, ApiError):
                 raise ApiProcessingError(response.data.msg)
@@ -175,11 +126,10 @@ class DuplicatiService:
                 },
             )
 
-            # Refresh the sensor data for the backup
-            await self.async_refresh_sensor_data(backup_id)
-
-            # Wait for the backup to complete
-            await self.__wait_for_backup_completion(backup_id)
+            # Get the coordinator of the backup ID
+            coordinator: DuplicatiDataUpdateCoordinator = self.coordinators[backup_id]
+            # Start monitoring and wait for completion
+            await coordinator.start_monitoring_and_wait()
 
             # Handle successful backup creation
             _LOGGER.info(
@@ -187,8 +137,7 @@ class DuplicatiService:
                 backup_id,
                 self.api.get_api_host(),
             )
-
-            # Fire an event to notify that the backup process has finished
+            # Fire an event to notify that the backup process finished
             self.hass.bus.async_fire(
                 BACKUP_COMPLETED,
                 {
@@ -205,7 +154,7 @@ class DuplicatiService:
                 self.api.get_api_host(),
                 str(e),
             )
-            # Fire an event to notify that the backup process has failed
+            # Fire an event to notify that the backup process failed
             self.hass.bus.async_fire(
                 BACKUP_FAILED,
                 {
@@ -219,9 +168,6 @@ class DuplicatiService:
                 f"Backup creation for backup with ID '{backup_id!s}' of server '{self.api.get_api_host()}' failed: {e!s}",
                 title="Backup creation error",
             )
-        finally:
-            # Refresh the sensor data for the backup
-            await self.async_refresh_sensor_data(backup_id)
 
     async def async_refresh_sensor_data(self, backup_id):
         """Service to manually update data."""
@@ -231,13 +177,14 @@ class DuplicatiService:
             if backup_id not in self.coordinators:
                 raise DuplicatiServiceException("Unknown backup ID provided")
 
-            # Get the coordinator of the backup ID
-            coordinator = self.coordinators[backup_id]
+            # Initiate refresh
             _LOGGER.debug(
                 "Initiate sensor data refresh for backup with ID '%s' of server '%s'",
                 backup_id,
                 self.api.get_api_host(),
             )
+            # Get the coordinator of the backup ID
+            coordinator: DuplicatiDataUpdateCoordinator = self.coordinators[backup_id]
             # Refresh the data
             await coordinator.async_refresh()
 
