@@ -298,9 +298,6 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
             # Not running yet, schedule another check
             elif retry <= max_retries:
                 await self.__handle_backup_not_detected(retry, max_retries)
-            # Max attempts reached, backup didn't start
-            else:
-                await self.__handle_max_retries_reached()
 
         except Exception as e:  # noqa: BLE001
             await self._handle_error(e, "scheduled backup check")
@@ -329,33 +326,27 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         """Handle case when backup is not detected but retries remain."""
         # Calculate delay with exponential backoff (1, 2, 4, 8, 16, 32...)
         delay = 2 ** (retry - 1)
-        # First attempt, no delay
-        if retry == 0:
-            _LOGGER.info(
-                "No running backup detected, checking again in %.1f seconds",
-                delay,
-            )
-        # Last attempt, stop retries
-        elif retry == max_retries:
-            _LOGGER.info(
-                "No running backup detected (retry %s of %s), stopping further retries",
-                retry,
-                max_retries,
-            )
-        # Retry with delay
-        else:
-            _LOGGER.info(
-                "No running backup detected (retry %s of %s), checking again in %.1f seconds",
-                retry,
-                max_retries,
-                delay,
-            )
+        # Prepare retry information
+        retries = "" if retry == 0 else f" (retry {retry} of {max_retries})"
         # Check for running backup again
         if retry < max_retries:
+            # Log retry information
+            _LOGGER.info(
+                "No running backup detected%s, checking again in %.1f seconds",
+                retries,
+                delay,
+            )
             # Wait for delay
             await asyncio.sleep(delay)
             # Check again
             await self._check_for_scheduled_backup(retry + 1, max_retries)
+        else:
+            # Log retry information
+            _LOGGER.info(
+                "No running backup detected%s, stopping further retries", retries
+            )
+            # Max retries reached, handle case
+            await self.__handle_max_retries_reached()
 
     async def __handle_max_retries_reached(self) -> None:
         """Handle case when max retries are reached without detecting backup."""
@@ -543,56 +534,42 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         response = await self.api.get_backup(backup_id)
         if not isinstance(response.data, BackupDefinition):
             raise UpdateFailed(f"Invalid response from API: {response}")
-        # Check backup state
-        error = False
-        if (
-            response.data.backup.metadata.last_error_date
-            and not response.data.backup.metadata.last_backup_date
-        ):
-            error = True
-        elif (
-            response.data.backup.metadata.last_error_date
-            and response.data.backup.metadata.last_backup_date
-        ):
-            if (
-                response.data.backup.metadata.last_error_date
-                > response.data.backup.metadata.last_backup_date
-            ):
-                error = True
-            else:
-                error = False
-        elif (
-            not response.data.backup.metadata.last_error_date
-            and response.data.backup.metadata.last_backup_date
-        ):
-            error = False
         # Prepare the sensor data vlaues
-        if error:
-            last_backup_execution = response.data.backup.metadata.last_error_date
-            last_backup_status = True
-            last_backup_error_message = response.data.backup.metadata.last_error_message
-            last_backup_duration = None
-            last_backup_source_size = None
-            last_backup_source_files_count = None
-            last_backup_target_size = None
-            last_backup_target_files_count = None
-        else:
-            last_backup_execution = response.data.backup.metadata.last_backup_date
-            last_backup_status = False
-            last_backup_error_message = "-"
-            last_backup_duration = response.data.backup.metadata.last_backup_duration
-            if last_backup_duration:
-                last_backup_duration = last_backup_duration.total_seconds()
-            last_backup_source_size = response.data.backup.metadata.source_files_size
-            last_backup_source_files_count = (
-                response.data.backup.metadata.source_files_count
-            )
-            last_backup_target_size = response.data.backup.metadata.target_files_size
-            last_backup_target_files_count = (
-                response.data.backup.metadata.target_files_count
-            )
+        last_backup_status = False
+        last_backup_execution = (
+            response.data.backup.metadata.last_backup_finished
+        )  # Duplicati is not updating last_backup_date on each execution
+        last_backup_error_message = "-"
+        last_backup_duration = response.data.backup.metadata.last_backup_duration
+        if last_backup_duration:
+            last_backup_duration = last_backup_duration.total_seconds()
+        last_backup_source_size = response.data.backup.metadata.source_files_size
+        last_backup_source_files_count = (
+            response.data.backup.metadata.source_files_count
+        )
+        last_backup_target_size = response.data.backup.metadata.target_files_size
+        last_backup_target_files_count = (
+            response.data.backup.metadata.target_files_count
+        )
         if response.data.schedule:
             self._next_backup_execution = response.data.schedule.time
+        # Error case
+        if response.data.backup.metadata.last_error_date:
+            if (
+                not response.data.backup.metadata.last_backup_finished
+                or response.data.backup.metadata.last_error_date
+                > response.data.backup.metadata.last_backup_finished
+            ):
+                last_backup_status = True
+                last_backup_execution = response.data.backup.metadata.last_error_date
+                last_backup_error_message = (
+                    response.data.backup.metadata.last_error_message
+                )
+                last_backup_duration = None
+                last_backup_source_size = None
+                last_backup_source_files_count = None
+                last_backup_target_size = None
+                last_backup_target_files_count = None
         # Set the sensor data values
         sensor_data[METRIC_NEXT_EXECUTION] = self._next_backup_execution
         sensor_data[METRIC_LAST_STATUS] = last_backup_status
