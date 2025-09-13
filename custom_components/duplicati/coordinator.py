@@ -551,8 +551,13 @@ class DuplicatiDataUpdateCoordinator(DataUpdateCoordinator):
         last_backup_target_files_count = (
             response.data.backup.metadata.target_files_count
         )
+        self._next_backup_execution = None
         if response.data.schedule:
-            self._next_backup_execution = response.data.schedule.time
+            if (
+                response.data.schedule.time
+                and response.data.schedule.time > datetime.now(UTC)
+            ):
+                self._next_backup_execution = response.data.schedule.time
         # Error case
         if response.data.backup.metadata.last_error_date:
             if (
