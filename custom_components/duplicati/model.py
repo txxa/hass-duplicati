@@ -187,12 +187,28 @@ class BackupDefinition:
 
             scheme: str
             host: str
-            port: int
+            port: int | None
             path: str
             username: str | None
             password: str | None
             ssh_fingerprint: str | None
             query_params: dict = field(default_factory=dict)
+
+            _scheme_ports = {
+                "http": 80,
+                "https": 443,
+                "ftp": 21,
+                "sftp": 22,
+                "ssh": 22,
+                "scp": 22,
+                "rsync": 873,
+                "webdav": 80,
+                "webdavs": 443,
+                "s3": 443,
+                "smb": 445,
+                "cifs": 445,
+                "afp": 548,
+            }
 
             FIELD_MAPPING = {
                 "scheme": "scheme",
@@ -208,17 +224,35 @@ class BackupDefinition:
             @classmethod
             def from_url(cls, url: str):
                 """Parse the target URL and create TargetURLComponents instance."""
+
+                # Handle local file paths
+                if "://" not in url:
+                    # Local file path case
+                    return cls(
+                        scheme="file",
+                        host="localhost",
+                        port=None,
+                        path=url,
+                        username=None,
+                        password=None,
+                        ssh_fingerprint=None,
+                    )
+
                 parsed_url = urlparse(url)
                 query_params = parse_qs(parsed_url.query)
 
                 converted_data = {}
                 for cls_field, url_field in cls.FIELD_MAPPING.items():
                     if cls_field == "host":
-                        value = parsed_url.hostname or "unknown"
+                        value = parsed_url.hostname or "localhost"
                     elif cls_field == "port":
-                        value = parsed_url.port or 0
-                        if not isinstance(value, int):
-                            raise TypeError("Port must be an integer")
+                        # Handle file:// URLs and missing ports
+                        if parsed_url.scheme == "file":
+                            value = None
+                        else:
+                            value = parsed_url.port or cls._scheme_ports.get(
+                                parsed_url.scheme, None
+                            )
                     elif cls_field == "path":
                         value = unquote(parsed_url.path)
                     elif cls_field in ["username", "password", "ssh_fingerprint"]:
@@ -238,7 +272,20 @@ class BackupDefinition:
 
             def reconstruct_url(self) -> str:
                 """Reconstruct the target URL from its components."""
-                url = f"{self.scheme}://{self.host}:{self.port}{quote(self.path)}"
+
+                # Handle local file paths
+                if self.scheme == "file":
+                    return self.path
+
+                # Handle network URLs
+                url = f"{self.scheme}://{self.host}"
+
+                if self.port is not None and self.port != self._scheme_ports.get(
+                    self.scheme, None
+                ):
+                    url += f":{self.port}"
+
+                url += quote(self.path)
 
                 query_parts = []
                 if self.username:
