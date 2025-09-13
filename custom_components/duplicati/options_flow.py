@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import ConfigFlowResult, OptionsFlow
 from homeassistant.const import (
     CONF_SCAN_INTERVAL,
 )
@@ -28,10 +28,6 @@ _LOGGER = logging.getLogger(__name__)
 
 class DuplicatiOptionsFlowHandler(OptionsFlow, DuplicatiFlowHandlerBase):
     """Options flow handler for the Duplicati integration."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self.config_entry = config_entry
 
     def __validate_input(self, data: dict[str, Any]) -> dict[str, Any]:
         """Process user input and create new or update existing config entry."""
