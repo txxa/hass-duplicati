@@ -134,8 +134,17 @@ class BackupDefinition:
                 if duration_string is None:
                     return None
                 parts = duration_string.split(":")
-                hours = int(parts[0])
+
+                # Handle days.hours format in the first part
+                if "." in parts[0]:
+                    days, hours = map(int, parts[0].split("."))
+                else:
+                    days = 0
+                    hours = int(parts[0])
+
                 minutes = int(parts[1])
+
+                # Handle seconds and microseconds
                 if "." in parts[2]:
                     seconds, microseconds = map(float, parts[2].split("."))
                     microseconds = int(
@@ -144,7 +153,9 @@ class BackupDefinition:
                 else:
                     seconds = float(parts[2])
                     microseconds = 0
+
                 return timedelta(
+                    days=days,
                     hours=hours,
                     minutes=minutes,
                     seconds=seconds,
@@ -156,11 +167,16 @@ class BackupDefinition:
                 """Convert timedelta object to API format string."""
                 if duration is None:
                     return ""
+
                 total_seconds = duration.total_seconds()
-                hours = total_seconds / 3600
-                minutes = (total_seconds % 3600) / 60
-                seconds = total_seconds % 60
-                return f"{hours:02.0f}:{minutes:02.0f}:{seconds:02.0f}"
+                days = int(total_seconds // (24 * 3600))
+                hours = int((total_seconds % (24 * 3600)) // 3600)
+                minutes = int((total_seconds % 3600) // 60)
+                seconds = int(total_seconds % 60)
+
+                if days > 0:
+                    return f"{days}.{hours:02d}:{minutes:02d}:{seconds:02d}"
+                return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
             @staticmethod
             def __truncate_error_message(message: str, max_length: int = 255) -> str:
